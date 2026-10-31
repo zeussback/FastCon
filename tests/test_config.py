@@ -97,3 +97,59 @@ def test_settings_load_returns_defaults_on_missing_or_corrupt_file(
     recovered = AppSettings.load(corrupt_file)
     assert recovered.profile_id == "superonline"
     assert "discord.com" in recovered.target_domains
+
+
+def test_autostart_enable_creates_scheduled_task() -> None:
+    """Enabling autostart invokes schtasks /Create with ONLOGON and --minimized."""
+    from src.autostart import AutoStartManager
+
+    executed_commands: list[list[str]] = []
+
+    def fake_runner(cmd: list[str]) -> tuple[int, str]:
+        executed_commands.append(cmd)
+        return 0, "SUCCESS"
+
+    manager = AutoStartManager(command_runner=fake_runner)
+    ok, msg = manager.set_autostart(True)
+
+    assert ok is True
+    assert msg
+    assert len(executed_commands) == 1
+    cmd = executed_commands[0]
+    assert cmd[0] == "schtasks"
+    assert "/Create" in cmd
+    assert "FastConAutoStart" in cmd
+    assert "/SC" in cmd and "ONLOGON" in cmd
+
+
+def test_autostart_disable_deletes_scheduled_task() -> None:
+    """Disabling autostart removes the FastConAutoStart scheduled task."""
+    from src.autostart import AutoStartManager
+
+    executed_commands: list[list[str]] = []
+
+    def fake_runner(cmd: list[str]) -> tuple[int, str]:
+        executed_commands.append(cmd)
+        return 0, "SUCCESS"
+
+    manager = AutoStartManager(command_runner=fake_runner)
+    ok, _ = manager.set_autostart(False)
+
+    assert ok is True
+    assert len(executed_commands) == 1
+    assert "/Delete" in executed_commands[0]
+    assert "FastConAutoStart" in executed_commands[0]
+
+
+def test_autostart_handles_failure_gracefully_and_queries_status() -> None:
+    """Querying and failing commands return clean boolean/error messages without raising."""
+    from src.autostart import AutoStartManager
+
+    def failing_runner(cmd: list[str]) -> tuple[int, str]:
+        return 1, "ERROR: Access is denied."
+
+    manager = AutoStartManager(command_runner=failing_runner)
+    assert manager.is_autostart_enabled() is False
+    ok, msg = manager.set_autostart(True)
+    assert ok is False
+    assert "Access is denied" in msg or "Yönetici" in msg
