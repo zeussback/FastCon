@@ -307,3 +307,11 @@ def test_dpi_service_hairpin_redirects_target_tls_to_local_record_proxy() -> Non
     assert returned.dst_addr == "192.168.1.5"
     assert returned.dst_port == 53100
     service.stop()
+
+
+def test_health_checker_preinitializes_shared_ssl_context() -> None:
+    """HealthChecker caches a reusable SSLContext so disk CA loading never inflates ping."""
+    import ssl
+
+    checker = HealthChecker()
+    assert isinstance(checker.ssl_context, ssl.SSLContext)

@@ -183,14 +183,30 @@ class DPIService:
         )
         self._thread.start()
 
-        # Flush Windows DNS cache in background so stale 195.175.254.2 sinkhole records clear immediately
+        # Flush Windows DNS cache and pre-warm DoH connection pool + core domains
         threading.Thread(
-            target=_flush_windows_dns_cache,
-            name="fastcon-flushdns",
+            target=self._bootstrap_dns_and_doh,
+            name="fastcon-bootstrap",
             daemon=True,
         ).start()
 
         return True, "FastCon aktif — 0 ms oyun/ses gecikmesiyle koruma çalışıyor."
+
+    def _bootstrap_dns_and_doh(self) -> None:
+        """Flush stale OS DNS entries and pre-warm HTTP/2 DoH cache for instant first launch."""
+        _flush_windows_dns_cache()
+        if not self.settings.active_profile.enable_doh:
+            return
+        for domain in ("discord.com", "gateway.discord.gg", "www.roblox.com"):
+            if not self._running.is_set():
+                break
+            try:
+                q_wire = dns.message.make_query(domain, dns.rdatatype.A).to_wire()
+                ans = self._doh.resolve_wire(q_wire)
+                if ans is not None:
+                    self._extract_and_track_ipv4_answers(ans)
+            except (dns.exception.DNSException, ValueError, OSError):
+                continue
 
     def stop(self) -> None:
         """Cleanly release WinDivert handle and local proxy so networking returns immediately to normal."""
