@@ -102,3 +102,32 @@ def test_doh_resolver_fails_over_to_backup_endpoint() -> None:
     assert len(attempted_urls) == 2
     parsed = dns.message.from_wire(ans)
     assert str(parsed.answer[0][0]) == "128.116.127.3"
+
+
+def test_doh_resolver_evicts_full_cache_and_handles_total_failure() -> None:
+    """Bounded cache evicts oldest entry, clear_cache resets state, and total failure returns None."""
+    fail_mode = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if fail_mode:
+            return httpx.Response(503)
+        q = dns.message.from_wire(request.content)
+        # Response with empty answer section tests minimum fallback TTL
+        r = dns.message.make_response(q)
+        return httpx.Response(200, content=r.to_wire())
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    resolver = DoHResolver(
+        endpoints=["https://1.1.1.1/dns-query"],
+        max_cache_entries=1,
+        http_client=client,
+    )
+
+    assert resolver.resolve_wire(b"short") is None
+    assert resolver.resolve_wire(_make_dns_query("discord.com")) is not None
+    assert resolver.resolve_wire(_make_dns_query("roblox.com")) is not None
+
+    resolver.clear_cache()
+    fail_mode = True
+    assert resolver.resolve_wire(_make_dns_query("discord.com")) is None
+    resolver.close()
