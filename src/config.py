@@ -31,7 +31,8 @@ DEFAULT_TARGET_DOMAINS: tuple[str, ...] = (
 DEFAULT_DOH_ENDPOINTS: tuple[str, ...] = (
     "https://1.1.1.1/dns-query",
     "https://8.8.8.8/dns-query",
-    "https://9.9.9.9:5053/dns-query",
+    "https://1.0.0.1/dns-query",
+    "https://8.8.4.4/dns-query",
 )
 
 

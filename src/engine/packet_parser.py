@@ -166,6 +166,49 @@ def build_tls_fragments(
     return fragments
 
 
+def split_tls_client_hello_records(
+    payload: bytes,
+    profile: DPIProfile,
+    sni_match: SNIMatch | None = None,
+) -> bytes:
+    """Split a TLS ClientHello record into two valid RFC 5246 TLS records across the SNI field.
+
+    Defeats stateful TCP-reassembling DPI appliances (such as Turkcell Superonline)
+    that stitch TCP segments together before parsing the first TLS record header.
+    """
+    if not profile.fragment_tls or len(payload) <= 9:
+        return payload
+    if payload[0] != 0x16 or payload[1] != 0x03:
+        return payload
+
+    record_len = struct.unpack_from("!H", payload, 3)[0]
+    if record_len <= 4 or 5 + record_len > len(payload):
+        return payload
+
+    record_header_prefix = payload[:3]
+    first_record_body = payload[5 : 5 + record_len]
+    trailing_bytes = payload[5 + record_len :]
+
+    resolved_sni = sni_match if sni_match is not None else extract_tls_sni(payload)
+    if (
+        profile.split_at_sni
+        and resolved_sni is not None
+        and resolved_sni.host_offset >= 5
+    ):
+        delta = min(profile.sni_split_offset, max(1, resolved_sni.host_length // 2))
+        body_cut = (resolved_sni.host_offset - 5) + delta
+    else:
+        body_cut = profile.sni_split_offset
+
+    body_cut = max(1, min(body_cut, len(first_record_body) - 1))
+    part1 = first_record_body[:body_cut]
+    part2 = first_record_body[body_cut:]
+
+    rec1 = record_header_prefix + struct.pack("!H", len(part1)) + part1
+    rec2 = record_header_prefix + struct.pack("!H", len(part2)) + part2
+    return rec1 + rec2 + trailing_bytes
+
+
 def extract_http_host(payload: bytes) -> str | None:
     """Extract the hostname (without port) from an outbound HTTP request payload."""
     if len(payload) < 16 or not payload.startswith(_HTTP_METHODS):

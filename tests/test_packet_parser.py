@@ -10,6 +10,7 @@ from src.engine.packet_parser import (
     build_tls_fragments,
     extract_http_host,
     extract_tls_sni,
+    split_tls_client_hello_records,
 )
 
 
@@ -135,3 +136,41 @@ def test_extract_and_fragment_http_host_header() -> None:
     )
     assert b"hoSt: www.roblox.com" in reassembled
     assert len(reassembled) == len(http_req)
+
+
+def test_split_tls_client_hello_records_creates_two_rfc5246_records_splitting_sni() -> (
+    None
+):
+    """Superonline stateful TCP DPI bypass splits one TLS record into two valid TLS records across SNI."""
+    original = _craft_tls_client_hello("discord.com")
+    sni = extract_tls_sni(original)
+    assert sni is not None
+
+    split_bytes = split_tls_client_hello_records(
+        original,
+        profile=ISP_PROFILES["superonline"],
+        sni_match=sni,
+    )
+
+    # Must be exactly 5 bytes longer (one extra 5-byte TLS record header)
+    assert len(split_bytes) == len(original) + 5
+
+    # Parse Record 1
+    assert split_bytes[0] == 0x16
+    assert split_bytes[1:3] == original[1:3]
+    rec1_len = struct.unpack_from("!H", split_bytes, 3)[0]
+    rec1_body = split_bytes[5 : 5 + rec1_len]
+
+    # Parse Record 2
+    rec2_offset = 5 + rec1_len
+    assert split_bytes[rec2_offset] == 0x16
+    assert split_bytes[rec2_offset + 1 : rec2_offset + 3] == original[1:3]
+    rec2_len = struct.unpack_from("!H", split_bytes, rec2_offset + 3)[0]
+    rec2_body = split_bytes[rec2_offset + 5 : rec2_offset + 5 + rec2_len]
+
+    # Neither TLS record body contains the intact SNI string "discord.com"
+    assert b"discord.com" not in rec1_body
+    assert b"discord.com" not in rec2_body
+
+    # Concatenating both TLS record bodies reproduces the exact original handshake message
+    assert rec1_body + rec2_body == original[5:]

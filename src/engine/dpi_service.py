@@ -1,13 +1,18 @@
-"""Background WinDivert service for zero-latency DPI fragmentation and DoH DNS injection."""
+"""Background WinDivert service for zero-latency DPI bypass and DoH DNS injection."""
 
 from __future__ import annotations
 
 import atexit
+import socket
+import subprocess
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+import dns.exception
+import dns.message
+import dns.rdatatype
 import pydivert
 
 from src.config import AppSettings
@@ -19,16 +24,59 @@ from src.engine.packet_parser import (
     extract_http_host,
     extract_tls_sni,
 )
-
-WINDIVERT_FILTER = (
-    "outbound and !loopback and ("
-    "(tcp.DstPort == 443 and tcp.PayloadLength > 0) or "
-    "(tcp.DstPort == 80 and tcp.PayloadLength > 0) or "
-    "(udp.DstPort == 53 and udp.PayloadLength >= 12)"
-    ")"
-)
+from src.engine.tls_proxy import BTK_SINKHOLE_PREFIX, TLSRecordProxy
 
 PacketSender = Callable[[pydivert.Packet], None]
+
+# Standard and Cloudflare/Discord Voice TLS signaling ports
+_TLS_PORTS = frozenset({443, 2053, 2083, 2087, 2096, 8443})
+
+
+def build_windivert_filter(proxy_port: int) -> str:
+    """Build surgical outbound WinDivert filter excluding UDP voice/gaming and DoH servers."""
+    tls_port_expr = " or ".join(f"tcp.DstPort == {p}" for p in sorted(_TLS_PORTS))
+    proxy_clause = f" or tcp.SrcPort == {proxy_port}" if proxy_port > 0 else ""
+    return (
+        "outbound and !loopback and ("
+        "(udp.DstPort == 53 and udp.PayloadLength >= 12) or "
+        "("
+        "ip and "
+        "ip.DstAddr != 1.1.1.1 and ip.DstAddr != 1.0.0.1 and "
+        "ip.DstAddr != 8.8.8.8 and ip.DstAddr != 8.8.4.4 and ("
+        f"({tls_port_expr}){proxy_clause} or "
+        "(tcp.DstPort == 80 and tcp.PayloadLength > 0)"
+        ")"
+        ")"
+        ")"
+    )
+
+
+def _host_has_global_ipv6() -> bool:
+    """Return True if the machine currently has a non-link-local global IPv6 address."""
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6)
+        for info in infos:
+            addr = str(info[4][0]).lower()
+            if not addr.startswith(("fe80:", "::1")):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _flush_windows_dns_cache() -> None:
+    """Purge stale/poisoned OS DNS cache entries (e.g. 195.175.254.2) upon engine start."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        subprocess.run(
+            ["ipconfig", "/flushdns"],
+            capture_output=True,
+            check=False,
+            timeout=4,
+            creationflags=flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 @dataclass
@@ -54,12 +102,20 @@ class DPIService:
         self.stats = EngineStats()
         self._doh = doh_resolver or DoHResolver(endpoints=settings.doh_endpoints)
         self._divert_factory = divert_factory
+        self._tls_proxy = TLSRecordProxy(
+            settings_getter=lambda: self.settings,
+            doh_resolver=self._doh,
+            on_tls_bypassed=self._record_tls_bypass,
+        )
+
         self._handle: pydivert.WinDivert | None = None
         self._thread: threading.Thread | None = None
         self._dns_pool: ThreadPoolExecutor | None = None
         self._running = threading.Event()
         self._send_lock = threading.Lock()
         self._stats_lock = threading.Lock()
+        self._target_ips: set[str] = set()
+        self._has_global_ipv6 = False
         self._last_error: str | None = None
         atexit.register(self.stop)
 
@@ -69,9 +125,24 @@ class DPIService:
         return self._running.is_set()
 
     @property
+    def proxy_port(self) -> int:
+        """Return the local transparent TLS record-splitting proxy port."""
+        return self._tls_proxy.port
+
+    @property
     def last_error(self) -> str | None:
         """Return the most recent startup/runtime error message, if any."""
         return self._last_error
+
+    def register_target_ip(self, ip_addr: str) -> None:
+        """Mark an IPv4 address as belonging to a target domain."""
+        with self._stats_lock:
+            self._target_ips.add(ip_addr)
+
+    def _record_tls_bypass(self, hostname: str) -> None:
+        with self._stats_lock:
+            self.stats.tls_fragmented += 1
+            self.stats.last_domain = hostname
 
     def update_settings(self, settings: AppSettings) -> None:
         """Update active profile, target domain list, and DoH endpoints on the fly."""
@@ -79,18 +150,24 @@ class DPIService:
         self._doh.endpoints = list(settings.doh_endpoints)
 
     def start(self) -> tuple[bool, str]:
-        """Open WinDivert handle and launch background packet processing loop."""
+        """Start local TLS Record Proxy, open WinDivert handle, and flush poisoned DNS cache."""
         if self._running.is_set():
             return True, "FastCon motoru zaten çalışıyor."
 
         self._last_error = None
+        self._has_global_ipv6 = _host_has_global_ipv6()
+        proxy_port = self._tls_proxy.start()
+        filter_expr = build_windivert_filter(proxy_port)
+
         try:
-            handle = self._divert_factory(WINDIVERT_FILTER)
+            handle = self._divert_factory(filter_expr)
             handle.open()
         except PermissionError:
+            self._tls_proxy.stop()
             self._last_error = "Yönetici (Administrator) izni gerekli."
             return False, self._last_error
         except OSError as exc:
+            self._tls_proxy.stop()
             self._last_error = f"WinDivert sürücüsü başlatılamadı: {exc}"
             return False, self._last_error
 
@@ -105,10 +182,18 @@ class DPIService:
             daemon=True,
         )
         self._thread.start()
-        return True, "FastCon aktif — 0 ms ek gecikmeyle koruma çalışıyor."
+
+        # Flush Windows DNS cache in background so stale 195.175.254.2 sinkhole records clear immediately
+        threading.Thread(
+            target=_flush_windows_dns_cache,
+            name="fastcon-flushdns",
+            daemon=True,
+        ).start()
+
+        return True, "FastCon aktif — 0 ms oyun/ses gecikmesiyle koruma çalışıyor."
 
     def stop(self) -> None:
-        """Cleanly release WinDivert handle so Windows networking returns immediately to normal."""
+        """Cleanly release WinDivert handle and local proxy so networking returns immediately to normal."""
         self._running.clear()
         handle = self._handle
         self._handle = None
@@ -117,6 +202,8 @@ class DPIService:
                 handle.close()
             except OSError:
                 pass
+
+        self._tls_proxy.stop()
 
         thread = self._thread
         self._thread = None
@@ -163,11 +250,10 @@ class DPIService:
         *,
         async_dns: bool = False,
     ) -> None:
-        """Inspect and fragment/resolve matching packets; pass everything else untouched."""
+        """Redirect TLS handshakes to local record-splitter, resolve DoH DNS, and fragment HTTP."""
         try:
             if packet.udp is not None and packet.dst_port == 53:
                 if async_dns and self._dns_pool is not None:
-                    # Copy raw packet so async worker owns an independent buffer
                     cloned = pydivert.Packet(
                         bytes(packet.raw),
                         interface=packet.interface,
@@ -178,20 +264,77 @@ class DPIService:
                     self.handle_dns_packet_sync(packet, send_fn)
                 return
 
-            if packet.tcp is not None and packet.payload:
-                if packet.dst_port == 443:
-                    self._handle_tls_packet(packet, send_fn)
+            if packet.tcp is not None:
+                proxy_port = self._tls_proxy.port
+
+                # 1. Return leg of hairpin NAT (TLSRecordProxy -> Local Application)
+                if (
+                    proxy_port >= 0
+                    and packet.src_port == proxy_port
+                    and proxy_port != 0
+                ):
+                    orig_port = self._tls_proxy.lookup_original_port(
+                        packet.dst_addr, int(packet.dst_port)
+                    )
+                    rewritten = pydivert.Packet(
+                        bytes(packet.raw),
+                        interface=packet.interface,
+                        direction=pydivert.Direction.INBOUND,
+                    )
+                    rewritten.src_addr, rewritten.dst_addr = (
+                        packet.dst_addr,
+                        packet.src_addr,
+                    )
+                    rewritten.src_port = orig_port
+                    rewritten.recalculate_checksums()
+                    send_fn(rewritten)
                     return
-                if packet.dst_port == 80:
+
+                # 2. Outbound TLS ports -> Hairpin redirect to TLSRecordProxy (when proxy is running
+                #    or when SYN / target IP is detected)
+                if packet.dst_port in _TLS_PORTS and packet.ipv4 is not None:
+                    if self._tls_proxy.is_upstream_port(int(packet.src_port)):
+                        send_fn(packet)
+                        return
+
+                    if proxy_port > 0 or packet.tcp.syn:
+                        active_port = (
+                            proxy_port if proxy_port > 0 else self._tls_proxy.start()
+                        )
+                        self._tls_proxy.record_redirect(
+                            packet.dst_addr,
+                            int(packet.src_port),
+                            int(packet.dst_port),
+                        )
+                        hairpin = pydivert.Packet(
+                            bytes(packet.raw),
+                            interface=packet.interface,
+                            direction=pydivert.Direction.INBOUND,
+                        )
+                        hairpin.src_addr, hairpin.dst_addr = (
+                            packet.dst_addr,
+                            packet.src_addr,
+                        )
+                        hairpin.dst_port = active_port
+                        hairpin.recalculate_checksums()
+                        send_fn(hairpin)
+                        return
+
+                    # Direct packet-level fallback when proxy is not running (e.g. unit test payloads)
+                    if packet.payload:
+                        self._handle_tls_packet_direct(packet, send_fn)
+                        return
+
+                # 3. Plaintext HTTP port 80 Host manipulation
+                if packet.dst_port == 80 and packet.payload:
                     self._handle_http_packet(packet, send_fn)
                     return
 
             send_fn(packet)
         except (OSError, ValueError, IndexError, KeyError, RuntimeError):
-            # Fail-safe guarantee: never drop a user's packet on unexpected parse errors
             send_fn(packet)
 
-    def _handle_tls_packet(
+    def _handle_tls_packet_direct(
         self, packet: pydivert.Packet, send_fn: PacketSender
     ) -> None:
         payload = bytes(packet.payload)
@@ -205,10 +348,7 @@ class DPIService:
         profile = self.settings.active_profile
         fragments = build_tls_fragments(payload, profile=profile, sni_match=sni_match)
         self._emit_tcp_fragments(packet, fragments, send_fn)
-
-        with self._stats_lock:
-            self.stats.tls_fragmented += 1
-            self.stats.last_domain = sni_match.hostname
+        self._record_tls_bypass(sni_match.hostname)
 
     def _handle_http_packet(
         self, packet: pydivert.Packet, send_fn: PacketSender
@@ -233,7 +373,7 @@ class DPIService:
         fragments: list[TCPFragment],
         send_fn: PacketSender,
     ) -> None:
-        if original.tcp is None or len(fragments) <= 1 and not fragments[0].is_fake:
+        if original.tcp is None or (len(fragments) <= 1 and not fragments[0].is_fake):
             send_fn(original)
             return
 
@@ -262,7 +402,7 @@ class DPIService:
         packet: pydivert.Packet,
         send_fn: PacketSender,
     ) -> None:
-        """Resolve matching outbound UDP/53 queries via DoH and inject INBOUND reply."""
+        """Resolve matching outbound UDP/53 queries via DoH and inject clean INBOUND reply."""
         profile = self.settings.active_profile
         if not profile.enable_doh or not packet.payload:
             send_fn(packet)
@@ -274,9 +414,23 @@ class DPIService:
             send_fn(packet)
             return
 
-        doh_answer = self._doh.resolve_wire(query_bytes)
+        qname, rdtype, _ = question
+
+        # If host lacks global IPv6, synthesize immediate empty NOERROR for AAAA (28)
+        # to prevent ISP router fe80::1 IPv6 sinkhole (2a01:358:...) and 300ms fallback lag.
+        doh_answer: bytes | None = None
+        if rdtype == int(dns.rdatatype.AAAA) and not self._has_global_ipv6:
+            try:
+                q_msg = dns.message.from_wire(query_bytes)
+                doh_answer = dns.message.make_response(q_msg).to_wire()
+            except (dns.exception.DNSException, ValueError):
+                doh_answer = None
+        else:
+            doh_answer = self._doh.resolve_wire(query_bytes)
+            if doh_answer is not None:
+                self._extract_and_track_ipv4_answers(doh_answer)
+
         if doh_answer is None:
-            # Fail-safe fallback: forward original UDP DNS query if DoH endpoints are unreachable
             send_fn(packet)
             return
 
@@ -293,4 +447,16 @@ class DPIService:
 
         with self._stats_lock:
             self.stats.dns_resolved += 1
-            self.stats.last_domain = question[0]
+            self.stats.last_domain = qname
+
+    def _extract_and_track_ipv4_answers(self, wire_answer: bytes) -> None:
+        try:
+            parsed = dns.message.from_wire(wire_answer)
+            for rrset in parsed.answer:
+                if rrset.rdtype == dns.rdatatype.A:
+                    for rdata in rrset:
+                        ip_text = str(rdata)
+                        if not ip_text.startswith(BTK_SINKHOLE_PREFIX):
+                            self.register_target_ip(ip_text)
+        except (dns.exception.DNSException, ValueError):
+            pass

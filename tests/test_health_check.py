@@ -260,3 +260,50 @@ def test_dpi_service_http_fragmentation_ttl_and_lifecycle() -> None:
     service.handle_dns_packet_sync(q_pkt, send_fn=dns_out.append)
     assert len(dns_out) == 1
     assert dns_out[0].direction == pydivert.Direction.OUTBOUND
+
+
+def test_dpi_service_hairpin_redirects_target_tls_to_local_record_proxy() -> None:
+    """Outbound TCP 443 to target IPs or BTK sinkhole IP redirects cleanly to TLSRecordProxy."""
+    settings = AppSettings(profile_id="superonline", scope_mode=ScopeMode.SELECTED_ONLY)
+    service = DPIService(settings=settings)
+    service.register_target_ip("162.159.135.232")
+
+    # Simulate client SYN to Discord IP:443 -> must hairpin INBOUND to proxy port
+    syn_pkt = (
+        pydivert.PacketBuilder()
+        .ipv4("192.168.1.5", "162.159.135.232")
+        .tcp(53100, 443)
+        .build()
+    )
+    assert syn_pkt.tcp is not None
+    syn_pkt.tcp.syn = True
+    syn_pkt.recalculate_checksums()
+
+    out: list[pydivert.Packet] = []
+    service.process_packet(syn_pkt, send_fn=out.append)
+
+    assert len(out) == 1
+    redirected = out[0]
+    assert redirected.direction == pydivert.Direction.INBOUND
+    assert redirected.src_addr == "162.159.135.232"
+    assert redirected.dst_addr == "192.168.1.5"
+    assert redirected.dst_port == service.proxy_port
+
+    # Simulate proxy SYN-ACK back from proxy_port -> must hairpin INBOUND from port 443
+    reply_pkt = (
+        pydivert.PacketBuilder()
+        .ipv4("192.168.1.5", "162.159.135.232")
+        .tcp(service.proxy_port, 53100)
+        .build()
+    )
+    out.clear()
+    service.process_packet(reply_pkt, send_fn=out.append)
+
+    assert len(out) == 1
+    returned = out[0]
+    assert returned.direction == pydivert.Direction.INBOUND
+    assert returned.src_addr == "162.159.135.232"
+    assert returned.src_port == 443
+    assert returned.dst_addr == "192.168.1.5"
+    assert returned.dst_port == 53100
+    service.stop()
