@@ -10,25 +10,26 @@ from PIL import Image, ImageDraw
 
 
 def create_status_icon_image(active: bool, size: int = 64) -> Image.Image:
-    """Render an anti-aliased lightning-shield tray icon reflecting active status."""
+    """Render an anti-aliased obsidian & white/emerald lightning tray icon."""
     scale = 2
     canvas_size = size * scale
     img = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    bg_fill = (16, 185, 129, 255) if active else (71, 85, 105, 255)
-    border_fill = (52, 211, 153, 255) if active else (148, 163, 184, 255)
+    # Obsidian dark base with crisp white/emerald border ring
+    bg_fill = (18, 18, 21, 255)
+    border_fill = (52, 211, 153, 255) if active else (113, 113, 122, 255)
+    bolt_fill = (250, 250, 250, 255) if active else (161, 161, 170, 255)
 
     margin = 8
     draw.rounded_rectangle(
         (margin, margin, canvas_size - margin, canvas_size - margin),
-        radius=28,
+        radius=30,
         fill=bg_fill,
         outline=border_fill,
-        width=5,
+        width=6,
     )
 
-    # Crisp geometric lightning bolt symbolizing zero-latency connection
     bolt = [
         (72, 22),
         (40, 68),
@@ -37,7 +38,7 @@ def create_status_icon_image(active: bool, size: int = 64) -> Image.Image:
         (88, 58),
         (66, 58),
     ]
-    draw.polygon(bolt, fill=(255, 255, 255, 255))
+    draw.polygon(bolt, fill=bolt_fill)
     return img.resize((size, size), Image.Resampling.LANCZOS)
 
 

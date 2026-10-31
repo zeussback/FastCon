@@ -1,9 +1,9 @@
-"""Configuration, ISP DPI bypass profiles, and domain filtering for FastCon."""
+"""Configuration, DPI bypass profiles, and domain filtering for FastCon."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -35,6 +35,18 @@ DEFAULT_DOH_ENDPOINTS: tuple[str, ...] = (
     "https://8.8.4.4/dns-query",
 )
 
+DOH_PROVIDER_PRESETS: dict[str, tuple[str, ...]] = {
+    "Otomatik Yedekli (Cloudflare + Google)": DEFAULT_DOH_ENDPOINTS,
+    "Cloudflare DoH (1.1.1.1)": (
+        "https://1.1.1.1/dns-query",
+        "https://1.0.0.1/dns-query",
+    ),
+    "Google DoH (8.8.8.8)": (
+        "https://8.8.8.8/dns-query",
+        "https://8.8.4.4/dns-query",
+    ),
+}
+
 
 class ScopeMode(StrEnum):
     """Determines whether DPI bypass applies only to target domains or all traffic."""
@@ -45,7 +57,7 @@ class ScopeMode(StrEnum):
 
 @dataclass(frozen=True)
 class DPIProfile:
-    """Parameters controlling TCP/TLS fragmentation and DNS handling for an ISP."""
+    """Parameters controlling TCP/TLS fragmentation and DNS handling."""
 
     profile_id: str
     display_name: str
@@ -60,11 +72,11 @@ class DPIProfile:
     enable_doh: bool = True
 
 
-ISP_PROFILES: dict[str, DPIProfile] = {
-    "superonline": DPIProfile(
-        profile_id="superonline",
-        display_name="Superonline Özel (Önerilen)",
-        description="SNI sınırından TLS parçalama + ters sıralı segment + şifreli DoH.",
+_CORE_PROFILES: dict[str, DPIProfile] = {
+    "standard": DPIProfile(
+        profile_id="standard",
+        display_name="Standart Mod (Önerilen)",
+        description="TLS kayıt bölme ve şifreli DoH ile dengeli, sıfır gecikmeli bağlantı.",
         fragment_tls=True,
         fragment_http=True,
         sni_split_offset=2,
@@ -74,10 +86,10 @@ ISP_PROFILES: dict[str, DPIProfile] = {
         fake_packet_ttl=0,
         enable_doh=True,
     ),
-    "superonline_ttl": DPIProfile(
-        profile_id="superonline_ttl",
-        display_name="Superonline Agresif (TTL + Ters Parçalama)",
-        description="Katı DPI filtreleri için düşük TTL sahte paket + SNI parçalama + DoH.",
+    "deep": DPIProfile(
+        profile_id="deep",
+        display_name="Derin Paket Aşma (Agresif)",
+        description="Katı ağ filtreleri için çoklu SNI bölme ve düşük TTL desenkronizasyonu.",
         fragment_tls=True,
         fragment_http=True,
         sni_split_offset=2,
@@ -87,10 +99,10 @@ ISP_PROFILES: dict[str, DPIProfile] = {
         fake_packet_ttl=3,
         enable_doh=True,
     ),
-    "turkey_general": DPIProfile(
-        profile_id="turkey_general",
-        display_name="Genel Türkiye (Türk Telekom / Kablonet / Diğer)",
-        description="Standart TLS ClientHello bölme + HTTP Host düzenleme + DoH.",
+    "light": DPIProfile(
+        profile_id="light",
+        display_name="Hafif Mod (Temel)",
+        description="Yalnızca temel el sıkışma başlık bölme ve şifreli DNS çözümleme.",
         fragment_tls=True,
         fragment_http=True,
         sni_split_offset=2,
@@ -101,6 +113,35 @@ ISP_PROFILES: dict[str, DPIProfile] = {
         enable_doh=True,
     ),
 }
+
+_LEGACY_ALIASES: dict[str, str] = {
+    "superonline": "standard",
+    "superonline_ttl": "deep",
+    "turkey_general": "light",
+}
+
+
+class ProfileRegistry(Mapping[str, DPIProfile]):
+    """Profile dictionary supporting both neutral IDs and legacy profile aliases."""
+
+    def __getitem__(self, key: str) -> DPIProfile:
+        resolved = _LEGACY_ALIASES.get(key, key)
+        return _CORE_PROFILES[resolved]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_CORE_PROFILES)
+
+    def __len__(self) -> int:
+        return len(_CORE_PROFILES)
+
+
+ISP_PROFILES: ProfileRegistry = ProfileRegistry()
+
+
+def resolve_profile_id(profile_id: str) -> str:
+    """Normalize a profile identifier, mapping legacy IDs to current canonical IDs."""
+    mapped = _LEGACY_ALIASES.get(profile_id, profile_id)
+    return mapped if mapped in _CORE_PROFILES else "standard"
 
 
 def normalize_domain(domain: str) -> str:
@@ -129,7 +170,7 @@ def matches_target_domain(hostname: str | None, target_domains: Iterable[str]) -
 class AppSettings:
     """User-configurable runtime and UI preferences persisted to JSON."""
 
-    profile_id: str = "superonline"
+    profile_id: str = "standard"
     scope_mode: ScopeMode = ScopeMode.SELECTED_ONLY
     target_domains: list[str] = field(
         default_factory=lambda: list(DEFAULT_TARGET_DOMAINS)
@@ -142,8 +183,9 @@ class AppSettings:
 
     @property
     def active_profile(self) -> DPIProfile:
-        """Return the active DPIProfile, falling back to 'superonline' if invalid."""
-        return ISP_PROFILES.get(self.profile_id, ISP_PROFILES["superonline"])
+        """Return the active DPIProfile, falling back to 'standard' if invalid."""
+        canonical = resolve_profile_id(self.profile_id)
+        return _CORE_PROFILES[canonical]
 
     def should_process_domain(self, hostname: str | None) -> bool:
         """Check whether a packet for the given hostname should undergo DPI/DoH bypass."""
@@ -156,7 +198,7 @@ class AppSettings:
     def save(self, path: Path = DEFAULT_SETTINGS_PATH) -> None:
         """Persist settings atomically as formatted UTF-8 JSON."""
         payload = {
-            "profile_id": self.profile_id,
+            "profile_id": resolve_profile_id(self.profile_id),
             "scope_mode": self.scope_mode.value,
             "target_domains": [
                 normalize_domain(d) for d in self.target_domains if normalize_domain(d)
@@ -180,9 +222,7 @@ class AppSettings:
             if not isinstance(raw, dict):
                 return cls()
 
-            profile_id = str(raw.get("profile_id", "superonline"))
-            if profile_id not in ISP_PROFILES:
-                profile_id = "superonline"
+            profile_id = resolve_profile_id(str(raw.get("profile_id", "standard")))
 
             raw_scope = str(raw.get("scope_mode", ScopeMode.SELECTED_ONLY.value))
             try:

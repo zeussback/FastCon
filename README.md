@@ -1,6 +1,6 @@
 # ⚡ FastCon
 
-**FastCon**, Türkiye'deki İnternet Servis Sağlayıcılarının (özellikle **Turkcell Superonline**, Türk Telekom, Kablonet vb.) uyguladığı **DPI (Derin Paket İncelemesi / SNI Filtreleme)** ve **DNS Zehirlemesi (DNS Hijacking/Poisoning)** engellerini; uzak bir VPN sunucusuna bağlanmadan, **0 ms ek gecikme (ping)** ve **%0 hız kaybı** ile aşmak için geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır.
+**FastCon**, İnternet Servis Sağlayıcılarının uyguladığı **DPI (Derin Paket İncelemesi / SNI Filtreleme)** ve **DNS Zehirlemesi (DNS Hijacking/Poisoning)** engellerini; uzak bir VPN sunucusuna bağlanmadan, **0 ms ek gecikme (ping)** ve **%0 hız kaybı** ile aşmak için geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır.
 
 ---
 
@@ -9,7 +9,7 @@
 | Yöntem | Ping / Hız Etkisi | Masaüstü Uygulama Desteği (Discord Ses & Roblox Player) | Kalıcılık & Güvenlik |
 | :--- | :---: | :---: | :--- |
 | **Klasik VPN / Tünel** | ❌ Yüksek Ping & Hız Düşüşü | ✅ Var | Tüm trafiği uzak sunucuya yönlendirir |
-| **Standart DNS Değişikliği** | ✅ Etkilemez | ❌ Superonline DPI'da Çalışmaz | Windows/İSS tarafından sıkça sıfırlanır veya yakalanır |
+| **Standart DNS Değişikliği** | ✅ Etkilemez | ❌ Derin Paket İncelemesinde (DPI) Çalışmaz | Windows/İSS tarafından sıkça sıfırlanır veya yakalanır |
 | **Hazır İkili (Binary) Araçlar** | ✅ Etkilemez | ✅ Var | ⚠️ Kapalı derleme / Antivirüs (HackTool) uyarıları |
 | **⚡ FastCon** | ✅ **0 ms Ek Ping** | ✅ **Tam Destek (UDP Ses & Oyun)** | ✅ **%100 Şeffaf Python Kaynak Kodu & Modern GUI** |
 
@@ -18,14 +18,11 @@
 ## ✨ Temel Özellikler
 
 - **🚀 Sıfır Gecikme (Zero-Latency Handshake Manipulation):** Oyun içi UDP paketleri (Roblox oyun trafiği, Discord WebRTC sesli sohbet ve yayın paketleri) hiçbir vekil sunucuya veya tünele sokulmaz. Yalnızca bağlantıyı başlatan ilk `TLS ClientHello` (SNI) ve `HTTP Host` paketleri işlenir.
-- **🛡️ Superonline Özel DPI Aşma Motoru:** Giden TLS el sıkışma paketlerini SNI uzantısı sınırından böler (TCP/TLS Fragmentation), ters sıralı segment gönderimi (Reverse Fragmentation) ve düşük TTL desenkronizasyonu uygular.
-- **🔒 Yerel DNS-over-HTTPS (DoH) Çözümleyici:** Windows ağ bağdaştırıcısı ayarlarını kalıcı olarak bozmadan, giden DNS sorgularını şifreli HTTPS (Cloudflare `1.1.1.1` / Google `8.8.8.8`) üzerinden çözer ve önbelleğe (TTL cache) alır.
-- **🖥️ Modern Masaüstü Arayüzü & Sistem Tepsisi (System Tray):**
-  - Tek tuşla **Başlat / Durdur** kontrolü.
-  - **Kapsam Seçimi:** Yalnızca seçili uygulamalar (*Discord & Roblox*) veya tüm engelli siteler.
-  - **Canlı Erişim Kontrolü (Health Check):** Discord ve Roblox için anlık DNS + HTTPS erişilebilirlik ve gecikme (ms) testi.
-  - **Kullanıcı Kontrollü Otomatik Başlatma:** İsteğe bağlı olarak uygulama içinden açılıp kapatılabilen *"Windows açılışında otomatik başlat"* seçeneği.
-  - Saat yanına (System Tray) küçülerek arka planda sessiz çalışma.
+- **🛡️ Çok Katmanlı DPI Aşma Motoru:** Giden TLS el sıkışma paketlerini RFC 5246 TLS Record katmanında ve TCP segment düzeyinde SNI uzantısı sınırından böler (`Standart Mod`, `Derin Paket Aşma`, `Hafif Mod`).
+- **🔒 Yerel DNS-over-HTTPS (DoH) Çözümleyici:** Windows ağ bağdaştırıcısı ayarlarını kalıcı olarak bozmadan, giden DNS sorgularını şifreli HTTPS (Cloudflare `1.1.1.1` / Google `8.8.8.8` / Quad9 `9.9.9.9`) üzerinden çözer ve önbelleğe (TTL cache) alır.
+- **🖥️ Modern Monokrom Arayüz & İki Sekmeli Tasarım (`Ana Ekran` / `Ayarlar`):**
+  - **Ana Ekran:** Canlı sonar animasyonlu **BAŞLAT / DURDUR** güç butonu, Discord ve Roblox için anlık erişim ve gecikme (`ms`) testi (**Şimdi Test Et**) ve **Bağlantı Profili** seçici.
+  - **Ayarlar Sekmesi:** Kapsam seçimi (*Sadece Seçili Uygulamalar* / *Tüm Siteler*), hedef alan adı düzenleyici, şifreli DNS (DoH) sağlayıcı seçimi, DNS önbellek temizleme, sistem tepsisi (System Tray) ve Windows başlangıçta otomatik çalışma tercihleri.
 
 ---
 
@@ -35,16 +32,17 @@
 FastCon/
 ├── src/
 │   ├── main.py                 # Uygulama giriş noktası ve UAC (Yönetici izni) kontrolü
-│   ├── config.py               # İSS profilleri (Superonline/Genel), hedef domain listeleri ve ayarlar
+│   ├── config.py               # Bağlantı profilleri (Standart/Derin/Hafif), domain listeleri ve ayarlar
 │   ├── autostart.py            # Kullanıcı kontrollü Windows başlangıç yöneticisi
 │   ├── engine/
-│   │   ├── packet_parser.py    # TLS ClientHello (SNI) & HTTP Host ayrıştırıcı ve TCP parçalayıcı
+│   │   ├── packet_parser.py    # TLS ClientHello (SNI) & RFC 5246 Record / TCP parçalayıcı
+│   │   ├── tls_proxy.py        # Yerel sıfır gecikmeli TLS Record bölme motoru
 │   │   ├── doh_resolver.py     # Yerel önbellekli DNS-over-HTTPS (DoH) çözümleyici
 │   │   └── dpi_service.py      # pydivert (WinDivert) tabanlı arka plan paket işleme servisi
 │   ├── diagnostics/
-│   │   └── health_check.py     # Discord ve Roblox canlı bağlantı doğrulama modülü
+│   │   └── health_check.py     # Discord ve Roblox canlı bağlantı ve ping (ms) doğrulama modülü
 │   └── ui/
-│       ├── app_window.py       # CustomTkinter ana masaüstü penceresi
+│       ├── app_window.py       # Monokrom koyu temalı, animasyonlu CustomTkinter masaüstü arayüzü
 │       └── tray_icon.py        # Sistem tepsisi (System Tray) ikonu ve hızlı menü
 ├── tests/                      # Pytest birim ve entegrasyon testleri
 └── requirements.txt            # Python bağımlılıkları

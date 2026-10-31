@@ -25,15 +25,23 @@ def test_default_domains_include_discord_and_roblox() -> None:
 
 
 def test_superonline_and_general_profiles_exist() -> None:
-    """Both Superonline-specific and General Turkey DPI profiles must be defined."""
-    assert "superonline" in ISP_PROFILES
-    assert "turkey_general" in ISP_PROFILES
+    """Neutral DPI profiles and backward-compatible legacy keys must be defined."""
+    assert "standard" in ISP_PROFILES
+    assert "deep" in ISP_PROFILES
+    assert "light" in ISP_PROFILES
 
-    superonline = ISP_PROFILES["superonline"]
-    assert superonline.fragment_tls is True
-    assert superonline.reverse_fragments is True
-    assert superonline.enable_doh is True
-    assert superonline.sni_split_offset >= 1
+    for prof in ISP_PROFILES.values():
+        assert "superonline" not in prof.display_name.lower()
+
+    standard = ISP_PROFILES["standard"]
+    assert standard.fragment_tls is True
+    assert standard.reverse_fragments is True
+    assert standard.enable_doh is True
+    assert standard.sni_split_offset >= 1
+
+    # Legacy profile_id values in settings.json resolve cleanly to standard/deep/light
+    legacy = AppSettings(profile_id="superonline")
+    assert legacy.active_profile.profile_id == "standard"
 
 
 def test_matches_target_domain_exact_and_subdomains() -> None:
@@ -65,10 +73,10 @@ def test_settings_should_process_domain_respects_scope_mode() -> None:
 
 
 def test_settings_save_and_load_roundtrip(tmp_path: Path) -> None:
-    """Settings persist cleanly to JSON and reload with identical values."""
+    """Settings persist cleanly to JSON and reload with identical values (including legacy migration)."""
     config_file = tmp_path / "settings.json"
     original = AppSettings(
-        profile_id="superonline",
+        profile_id="deep",
         scope_mode=ScopeMode.SELECTED_ONLY,
         target_domains=["discord.com", "roblox.com", "custom.org"],
         minimize_to_tray=True,
@@ -77,11 +85,17 @@ def test_settings_save_and_load_roundtrip(tmp_path: Path) -> None:
     original.save(config_file)
 
     loaded = AppSettings.load(config_file)
-    assert loaded.profile_id == "superonline"
+    assert loaded.profile_id == "deep"
     assert loaded.scope_mode == ScopeMode.SELECTED_ONLY
     assert "custom.org" in loaded.target_domains
     assert loaded.minimize_to_tray is True
     assert loaded.autostart_enabled is True
+
+    # Legacy "superonline" profile ID is automatically normalized to "standard"
+    legacy_settings = AppSettings(profile_id="superonline")
+    legacy_settings.save(config_file)
+    migrated = AppSettings.load(config_file)
+    assert migrated.profile_id == "standard"
 
 
 def test_settings_load_returns_defaults_on_missing_or_corrupt_file(
@@ -90,12 +104,12 @@ def test_settings_load_returns_defaults_on_missing_or_corrupt_file(
     """Missing or malformed settings file falls back safely to defaults without crashing."""
     missing_file = tmp_path / "does_not_exist.json"
     default_loaded = AppSettings.load(missing_file)
-    assert default_loaded.profile_id == "superonline"
+    assert default_loaded.profile_id == "standard"
 
     corrupt_file = tmp_path / "corrupt.json"
     corrupt_file.write_text("{invalid json!", encoding="utf-8")
     recovered = AppSettings.load(corrupt_file)
-    assert recovered.profile_id == "superonline"
+    assert recovered.profile_id == "standard"
     assert "discord.com" in recovered.target_domains
 
 
