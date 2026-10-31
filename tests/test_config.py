@@ -153,3 +153,29 @@ def test_autostart_handles_failure_gracefully_and_queries_status() -> None:
     ok, msg = manager.set_autostart(True)
     assert ok is False
     assert "Access is denied" in msg or "Yönetici" in msg
+
+
+def test_tray_status_icon_generates_valid_rgba_images() -> None:
+    """Tray icon generator produces distinct 64x64 RGBA images for active and inactive states."""
+    from src.ui.tray_icon import create_status_icon_image
+
+    inactive_img = create_status_icon_image(active=False)
+    active_img = create_status_icon_image(active=True)
+
+    assert inactive_img.size == (64, 64)
+    assert active_img.size == (64, 64)
+    assert inactive_img.mode == "RGBA"
+    assert inactive_img.tobytes() != active_img.tobytes()
+
+
+def test_main_parse_args_handles_minimized_and_no_elevate_flags() -> None:
+    """CLI argument parser recognizes --minimized and --no-elevate flags."""
+    from src.main import parse_args
+
+    args = parse_args(["--minimized", "--no-elevate"])
+    assert args.minimized is True
+    assert args.no_elevate is True
+
+    defaults = parse_args([])
+    assert defaults.minimized is False
+    assert defaults.no_elevate is False

@@ -72,7 +72,9 @@ FastCon/
    pip install -r requirements.txt
    ```
 
-3. **Uygulamayı başlatın (Yönetici PowerShell / Terminal ile):**
+3. **Uygulamayı başlatın:**
+   - Klasördeki **`FastCon.bat`** dosyasına çift tıklayarak (otomatik olarak Windows Yönetici / UAC izni ister ve arka planda siyah konsol penceresi bırakmadan arayüzü açar), **veya**
+   - Yönetici PowerShell / Terminal üzerinden:
    ```powershell
    python -m src.main
    ```
