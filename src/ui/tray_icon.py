@@ -104,12 +104,22 @@ class TrayController:
         active = self._is_active_fn()
         self._icon.icon = create_status_icon_image(active=active)
         self._icon.title = (
-            "FastCon — Koruma Aktif (0 ms Ek Ping)" if active else "FastCon — Kapalı"
+            "FastCon — Koruma Aktif (Sıfır Ek Gecikme)"
+            if active
+            else "FastCon — Kapalı"
         )
         try:
             self._icon.update_menu()
         except (OSError, RuntimeError):
             pass
+
+    def notify(self, message: str, title: str = "FastCon") -> None:
+        """Display an informational notification balloon/toast from the system tray icon."""
+        if self._icon is not None:
+            try:
+                self._icon.notify(message, title)
+            except (OSError, RuntimeError):
+                pass
 
     def stop(self) -> None:
         """Remove the tray icon cleanly upon application exit."""

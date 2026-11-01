@@ -4,14 +4,25 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import logging
+import platform
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from src import __version__
+from src.app_logging import configure_logging
 from src.autostart import AutoStartManager
 from src.config import AppSettings
 from src.diagnostics.health_check import HealthChecker
 from src.engine.dpi_service import DPIService
+from src.single_instance import (
+    SingleInstanceLock,
+    show_already_running_message,
+    signal_existing_instance,
+)
+
+logger = logging.getLogger("src.main")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -69,9 +80,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     admin = is_user_admin()
 
+    log_file = configure_logging()
+    logger.info(
+        "FastCon %s başlatılıyor (yönetici=%s, simge_durumunda=%s, python=%s, sistem=%s)",
+        __version__,
+        admin,
+        args.minimized,
+        platform.python_version(),
+        platform.platform(),
+    )
+
+    # Two instances would run two WinDivert handles on the same traffic: hand over instead.
+    instance_lock = SingleInstanceLock()
+    if not instance_lock.acquire():
+        logger.info("FastCon zaten çalışıyor; mevcut pencere öne getiriliyor")
+        if not signal_existing_instance():
+            show_already_running_message()
+        return 0
+
     if not admin and not args.no_elevate:
         forwarded = ["--minimized"] if args.minimized else []
+        # Release first so the elevated copy can take ownership of the lock
+        instance_lock.release()
         if relaunch_as_admin(forwarded):
+            logger.info("Yönetici izniyle yeniden başlatıldı")
+            return 0
+        logger.warning("UAC yükseltmesi reddedildi veya başarısız oldu")
+        if not instance_lock.acquire():
+            if not signal_existing_instance():
+                show_already_running_message()
             return 0
 
     # Lazy import GUI module after UAC check so elevation relaunch is instantaneous
@@ -83,8 +120,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     health_checker = HealthChecker()
 
     def handle_manual_elevate() -> None:
+        instance_lock.release()
         if relaunch_as_admin():
             app.quit_application()
+            return
+        instance_lock.acquire()
+        instance_lock.start_listener(lambda: app.after(0, app.show_window))
 
     app = FastConApp(
         settings=settings,
@@ -94,8 +135,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         is_admin=admin,
         on_request_elevate=handle_manual_elevate,
         start_minimized=args.minimized,
+        log_file=log_file,
     )
-    app.mainloop()
+    instance_lock.start_listener(lambda: app.after(0, app.show_window))
+    try:
+        app.mainloop()
+    finally:
+        instance_lock.release()
+        logger.info("FastCon kapatıldı")
     return 0
 
 

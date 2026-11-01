@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 from collections.abc import Callable
@@ -10,9 +11,13 @@ import dns.exception
 import dns.message
 import dns.rdatatype
 
+from src.app_logging import RateLimitedLog
 from src.config import AppSettings
 from src.engine.doh_resolver import DoHResolver
 from src.engine.packet_parser import extract_tls_sni, split_tls_client_hello_records
+
+logger = logging.getLogger(__name__)
+_throttled = RateLimitedLog(logger)
 
 BTK_SINKHOLE_PREFIX = "195.175.254."
 
@@ -133,6 +138,7 @@ class TLSRecordProxy:
                     for rdata in rrset:
                         return str(rdata)
         except (dns.exception.DNSException, ValueError, OSError):
+            logger.warning("Temiz IP DoH ile çözülemedi: %s", hostname, exc_info=True)
             return fallback_ip
         return fallback_ip
 
@@ -143,6 +149,8 @@ class TLSRecordProxy:
     ) -> None:
         peer_ip, client_port = addr[0], int(addr[1])
         orig_dst_port = self.lookup_original_port(peer_ip, client_port)
+        hostname = "?"
+        target_ip = peer_ip
 
         up_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         local_port = 0
@@ -161,14 +169,21 @@ class TLSRecordProxy:
 
             settings = self._get_settings()
             sni_match = extract_tls_sni(initial_bytes)
-            target_ip = peer_ip
             outbound_first = initial_bytes
+            if sni_match is not None:
+                hostname = sni_match.hostname
 
             if sni_match is not None and settings.should_process_domain(
                 sni_match.hostname
             ):
                 if target_ip.startswith(BTK_SINKHOLE_PREFIX):
                     target_ip = self._resolve_clean_ipv4(sni_match.hostname, target_ip)
+                    logger.info(
+                        "Engelleme (sinkhole) IP'si düzeltildi: %s %s -> %s",
+                        hostname,
+                        peer_ip,
+                        target_ip,
+                    )
                 outbound_first = split_tls_client_hello_records(
                     initial_bytes,
                     profile=settings.active_profile,
@@ -195,8 +210,17 @@ class TLSRecordProxy:
             up_to_cli.start()
             self._pump(cli_sock, up_sock)
             up_to_cli.join(timeout=2.0)
-        except OSError:
-            pass
+        except OSError as exc:
+            _throttled.log(
+                logging.INFO,
+                f"conn:{hostname}:{type(exc).__name__}",
+                "TLS bağlantısı kurulamadı: %s -> %s:%s (%s: %s)",
+                hostname,
+                target_ip,
+                orig_dst_port,
+                type(exc).__name__,
+                exc,
+            )
         finally:
             for s in (cli_sock, up_sock):
                 try:

@@ -1,28 +1,32 @@
 # ⚡ FastCon
 
-**FastCon**, İnternet Servis Sağlayıcılarının uyguladığı **DPI (Derin Paket İncelemesi / SNI Filtreleme)** ve **DNS Zehirlemesi (DNS Hijacking/Poisoning)** engellerini; uzak bir VPN sunucusuna bağlanmadan, **0 ms ek gecikme (ping)** ve **%0 hız kaybı** ile aşmak için geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır.
+**FastCon**, İnternet Servis Sağlayıcılarının (İSS) uyguladığı **DPI (Derin Paket İncelemesi / SNI Filtreleme)** ve **DNS Zehirlemesi (DNS Hijacking/Poisoning)** engellerini; uzak bir VPN sunucusuna bağlanmadan, oyun ve ses trafiğine ek gecikme eklemeden aşmak için geliştirilmiş şeffaf ve açık kaynaklı bir Windows masaüstü uygulamasıdır.
 
 ---
 
 ## 🎯 Neden FastCon?
 
-| Yöntem | Ping / Hız Etkisi | Masaüstü Uygulama Desteği (Discord Ses & Roblox Player) | Kalıcılık & Güvenlik |
+| Yöntem | Ping / Gecikme | Masaüstü Uygulama Desteği (Discord & Roblox) | Şeffaflık & Güvenlik |
 | :--- | :---: | :---: | :--- |
-| **Klasik VPN / Tünel** | ❌ Yüksek Ping & Hız Düşüşü | ✅ Var | Tüm trafiği uzak sunucuya yönlendirir |
-| **Standart DNS Değişikliği** | ✅ Etkilemez | ❌ Derin Paket İncelemesinde (DPI) Çalışmaz | Windows/İSS tarafından sıkça sıfırlanır veya yakalanır |
-| **Hazır İkili (Binary) Araçlar** | ✅ Etkilemez | ✅ Var | ⚠️ Kapalı derleme / Antivirüs (HackTool) uyarıları |
-| **⚡ FastCon** | ✅ **0 ms Ek Ping** | ✅ **Tam Destek (UDP Ses & Oyun)** | ✅ **%100 Şeffaf Python Kaynak Kodu & Modern GUI** |
+| **Klasik VPN / Tünel** | ❌ Yüksek Ping & Hız Kaybı | ✅ Var | Tüm trafiği uzak sunucuya yönlendirir |
+| **Standart DNS Değişikliği** | ✅ Doğrudan İSS Pingi | ❌ DPI Engellerinde Çalışmaz | İSS tarafından yönlendirilir veya sıfırlanır |
+| **Hazır Kapalı Derlemeler (.exe)** | ✅ Doğrudan İSS Pingi | ✅ Var | ⚠️ Kaynak kodu denetlenemeyen ikili dosyalar |
+| **⚡ FastCon** | ✅ **Doğrudan İSS Pingi** | ✅ **Tam Destek (Web, Ses & Oyun)** | ✅ **%100 Açık Kaynaklı Python Kodu & GPLv3** |
+
+> **Gecikme Notu:** FastCon, oyun sunucusu ve sesli sohbet (UDP) paketlerini herhangi bir tünel veya vekil sunucuya yönlendirmez; bu paketler doğrudan internet çıkışınız üzerinden akar. Yalnızca bağlantıyı başlatan ilk TCP el sıkışması (`TLS ClientHello` ve `HTTP Host`) yerel olarak bölünür (<1 ms işlem süresi).
 
 ---
 
 ## ✨ Temel Özellikler
 
-- **🚀 Sıfır Gecikme (Zero-Latency Handshake Manipulation):** Oyun içi UDP paketleri (Roblox oyun trafiği, Discord WebRTC sesli sohbet ve yayın paketleri) hiçbir vekil sunucuya veya tünele sokulmaz. Yalnızca bağlantıyı başlatan ilk `TLS ClientHello` (SNI) ve `HTTP Host` paketleri işlenir.
+- **🚀 Doğrudan İSS Pingi (Surgical Handshake Manipulation):** UDP ses (Discord WebRTC) ve oyun sunucusu paketlerine dokunulmaz. Sadece engelleme uygulanan ilk TLS/HTTP el sıkışma paketleri filtrelenir.
 - **🛡️ Çok Katmanlı DPI Aşma Motoru:** Giden TLS el sıkışma paketlerini RFC 5246 TLS Record katmanında ve TCP segment düzeyinde SNI uzantısı sınırından böler (`Standart Mod`, `Derin Paket Aşma`, `Hafif Mod`).
-- **🔒 Yerel DNS-over-HTTPS (DoH) Çözümleyici:** Windows ağ bağdaştırıcısı ayarlarını kalıcı olarak bozmadan, giden DNS sorgularını şifreli HTTPS (Cloudflare `1.1.1.1` / Google `8.8.8.8` / Quad9 `9.9.9.9`) üzerinden çözer ve önbelleğe (TTL cache) alır.
-- **🖥️ Modern Monokrom Arayüz & İki Sekmeli Tasarım (`Ana Ekran` / `Ayarlar`):**
-  - **Ana Ekran:** Canlı sonar animasyonlu **BAŞLAT / DURDUR** güç butonu, Discord ve Roblox için anlık erişim ve gecikme (`ms`) testi (**Şimdi Test Et**) ve **Bağlantı Profili** seçici.
-  - **Ayarlar Sekmesi:** Kapsam seçimi (*Sadece Seçili Uygulamalar* / *Tüm Siteler*), hedef alan adı düzenleyici, şifreli DNS (DoH) sağlayıcı seçimi, DNS önbellek temizleme, sistem tepsisi (System Tray) ve Windows başlangıçta otomatik çalışma tercihleri.
+- **🔒 Yerel DNS-over-HTTPS (DoH) Çözümleyici:** Ağ bağdaştırıcısı ayarlarını bozmadan, DNS sorgularını şifreli HTTPS (*Cloudflare*, *Google*, *Quad9*) üzerinden çözer ve yerel TTL önbelleğine alır.
+- **🖥️ Modern Monokrom Arayüz & İki Sekmeli Tasarım:**
+  - **Ana Ekran:** Canlı animasyonlu **BAŞLAT / DURDUR** güç butonu, Discord ve Roblox için gerçek zamanlı 1-RTT ping ve erişim testi (**Şimdi Test Et**), **Bağlantı Profili** seçimi.
+  - **Ayarlar Sekmesi:** Kapsam seçimi (*Sadece Seçili Uygulamalar* / *Tüm Siteler*), hedef alan adı listesi düzenleyici, şifreli DoH sağlayıcı seçimi, tek tıkla DNS önbelleği temizleme, sistem tepsisi (System Tray) ve Windows başlangıçta otomatik çalışma tercihleri.
+  - **Tanılama & Destek:** Sorun anında tek tıkla panoya kopyalanabilir **Tanı Raporu** ve dönen log dosyası (`fastcon.log`).
+- **🛡️ Çift Örnek Kilidi (Single-Instance Mutex):** Uygulamanın yanlışlıkla iki kez açılarak ağ sürücüsünü çakıştırmasını engeller; ikinci açılışta mevcut pencereyi otomatik öne getirir.
 
 ---
 
@@ -31,20 +35,24 @@
 ```text
 FastCon/
 ├── src/
-│   ├── main.py                 # Uygulama giriş noktası ve UAC (Yönetici izni) kontrolü
-│   ├── config.py               # Bağlantı profilleri (Standart/Derin/Hafif), domain listeleri ve ayarlar
-│   ├── autostart.py            # Kullanıcı kontrollü Windows başlangıç yöneticisi
+│   ├── main.py                 # Uygulama giriş noktası, UAC yükseltme ve tek örnek kilidi
+│   ├── app_logging.py          # Dönen UTF-8 loglayıcı ve oran sınırlayıcı
+│   ├── single_instance.py      # Windows Named Mutex tek örnek denetleyicisi
+│   ├── config.py               # Bağlantı profilleri, DoH sağlayıcıları ve ayarlar
+│   ├── autostart.py            # Windows başlangıç yöneticisi (schtasks)
 │   ├── engine/
-│   │   ├── packet_parser.py    # TLS ClientHello (SNI) & RFC 5246 Record / TCP parçalayıcı
-│   │   ├── tls_proxy.py        # Yerel sıfır gecikmeli TLS Record bölme motoru
+│   │   ├── packet_parser.py    # TLS SNI / HTTP Host ayrıştırıcı ve RFC 5246 parçalayıcı
+│   │   ├── tls_proxy.py        # Yerel TLS Record bölme ve BTK sinkhole iyileştirme motoru
 │   │   ├── doh_resolver.py     # Yerel önbellekli DNS-over-HTTPS (DoH) çözümleyici
-│   │   └── dpi_service.py      # pydivert (WinDivert) tabanlı arka plan paket işleme servisi
+│   │   └── dpi_service.py      # WinDivert tabanlı arka plan paket yakalama servisi
 │   ├── diagnostics/
-│   │   └── health_check.py     # Discord ve Roblox canlı bağlantı ve ping (ms) doğrulama modülü
+│   │   ├── health_check.py     # Discord ve Roblox canlı 1-RTT bağlantı testi
+│   │   └── report.py           # Destek için sistem tanı raporu oluşturucu
 │   └── ui/
-│       ├── app_window.py       # Monokrom koyu temalı, animasyonlu CustomTkinter masaüstü arayüzü
-│       └── tray_icon.py        # Sistem tepsisi (System Tray) ikonu ve hızlı menü
-├── tests/                      # Pytest birim ve entegrasyon testleri
+│       ├── app_window.py       # Monokrom CustomTkinter arayüzü ve animasyonlu kontroller
+│       └── tray_icon.py        # Sistem tepsisi (System Tray) yöneticisi
+├── tests/                      # 39 adet Pytest birim ve entegrasyon testi
+├── FastCon.bat                 # Tek tıkla arka planda konsolsuz başlatıcı
 └── requirements.txt            # Python bağımlılıkları
 ```
 
@@ -54,52 +62,77 @@ FastCon/
 
 ### Gereksinimler
 - **İşletim Sistemi:** Windows 10 / Windows 11 (64-bit)
-- **Python:** Python 3.11 veya üzeri
-- **Yetki:** Ağ paketlerinin el sıkışma aşamasında yakalanabilmesi için **Yönetici (Administrator)** izni gereklidir.
+- **Python:** Python 3.11 veya üzeri ([python.org](https://www.python.org/downloads/) üzerinden indirirken *"Add python.exe to PATH"* kutucuğunu işaretleyin).
+- **Yetki:** Ağ paketlerini el sıkışma katmanında inceleyebilmek için **Yönetici (Administrator)** izni gereklidir (uygulama otomatik olarak UAC onayı ister).
 
 ### Adım Adım Kurulum
 
-1. **Depoyu klonlayın:**
-   ```powershell
-   git clone https://github.com/zeussback/FastCon.git
-   cd FastCon
-   ```
+1. **Projeyi indirin:**
+   - Git ile:
+     ```powershell
+     git clone https://github.com/zeussback/FastCon.git
+     cd FastCon
+     ```
+   - *Veya* GitHub sayfasından yeşil **Code → Download ZIP** seçeneğiyle indirip bir klasöre çıkartın.
 
-2. **Bağımlılıkları yükleyin:**
+2. **Sanal ortam oluşturun ve bağımlılıkları yükleyin:**
    ```powershell
-   pip install -r requirements.txt
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
    ```
 
 3. **Uygulamayı başlatın:**
-   - Klasördeki **`FastCon.bat`** dosyasına çift tıklayarak (otomatik olarak Windows Yönetici / UAC izni ister ve arka planda siyah konsol penceresi bırakmadan arayüzü açar), **veya**
-   - Yönetici PowerShell / Terminal üzerinden:
-   ```powershell
-   python -m src.main
-   ```
+   - Klasördeki **`FastCon.bat`** dosyasına çift tıklayarak (arka planda siyah konsol penceresi açılmadan doğrudan arayüzü başlatır), **veya**
+   - Terminal üzerinden:
+     ```powershell
+     .\.venv\Scripts\python.exe -m src.main
+     ```
 
 ---
 
-## 🧪 Test ve Kod Kalitesi
+## 🛡️ Antivirüs ve WinDivert Hakkında
 
-Projedeki paket ayrıştırma, SNI parçalama, DoH çözümleme ve erişim testi modüllerini doğrulamak için:
+FastCon, ağ paketlerini incelemek için açık kaynaklı **WinDivert (Windows Packet Divert)** sürücüsünü kullanır (GoodbyeDPI ve zapret gibi popüler araçlarla aynı standart sürücüdür).
+
+- **Olası Güvenlik Uyarıları:** Bazı antivirüs yazılımları, paket seviyesinde filtreleme yapan sürücüleri genel olarak *"HackTool / WinDivert"* veya *"Riskware"* olarak etiketleyebilir.
+- **Şeffaflık:** FastCon tamamen açık kaynaklı Python kodundan oluşur. İçerisinde kapalı derlenmiş üçüncü taraf yürütülebilir dosya (`.exe`) veya uzak sunucuya veri gönderen kod bulunmaz. İstediğiniz zaman tüm kaynak kodları satır satır inceleyebilirsiniz.
+- Antivirüsünüz uyarı verirse FastCon klasörünü veya `WinDivert64.sys` sürücüsünü dışlamalara (whitelist) ekleyebilirsiniz.
+
+---
+
+## ❓ Sorun Giderme ve SSS
+
+### 1. "WinDivert sürücüsü başlatılamadı" hatası alıyorum
+- Uygulamanın Yönetici izniyle açıldığından emin olun.
+- Windows Defender veya üçüncü taraf antivirüs programınızın `WinDivert64.sys` dosyasını engellemediğini kontrol edin.
+- Başka bir DPI aşma programı (GoodbyeDPI, Zapret vb.) çalışıyorsa onu kapatın; iki program aynı anda aynı sürücü tutamacını açamaz.
+
+### 2. Uygulama "Aktif" görünüyor ama Discord / Roblox açılmıyor
+1. **Ayarlar** sekmesine gidin ve **DNS Önbelleğini Temizle** butonuna basın.
+2. Ana ekrandaki **Bağlantı Profili** seçeneğini *Derin Paket Aşma (Agresif)* olarak değiştirip motoru Durdurup tekrar Başlatın.
+3. Tarayıcınızı veya Discord uygulamasını tamamen kapatıp yeniden açın.
+
+### 3. Tanı Raporu Nasıl Alınır?
+- **Ayarlar** sekmesinde en alttaki **Tanılama ve Destek** kartına gelin.
+- **Tanı Raporunu Kopyala** butonuna basarak sistem bilgisi, profil durumu ve son log satırlarını panoya kopyalayabilir; **Log Klasörünü Aç** butonuna basarak log dosyasına erişebilirsiniz (`%LOCALAPPDATA%\FastCon\logs\fastcon.log`).
+
+---
+
+## 🧪 Testler
 
 ```powershell
-# Birim testlerini kapsam (coverage) raporuyla çalıştır
-pytest tests/ -v --cov=src
-
-# Kod stili ve lint kontrolü
-ruff check src/ tests/
+.\.venv\Scripts\pytest.exe -v
+.\.venv\Scripts\ruff.exe check src/ tests/
 ```
 
 ---
 
-## 🔒 Güvenlik ve Şeffaflık İlkeleri
+## ⚖️ Sorumluluk Reddi (Disclaimer)
 
-- **Kalıcı Ağ Değişikliği Yoktur:** FastCon durdurulduğunda veya kapatıldığında `WinDivert` tutamacı anında serbest bırakılır; Windows DNS veya proxy ayarlarında hiçbir kalıntı bırakılmaz.
-- **Sadece İlk Paket İşlenir:** Veri akışı, şifreler veya ses/oyun trafiği kaydedilmez, uzak bir sunucuya yönlendirilmez.
+Bu yazılım; ağ paket analizi, DPI filtreleme mekanizmalarını araştırma ve eğitim amaçlarıyla geliştirilmiştir. Yazılımın kullanımından doğabilecek hukuki sorumluluk ve yerel mevzuatlara uyum kullanıcının kendisine aittir.
 
 ---
 
 ## 📄 Lisans
 
-Bu proje kişisel kullanım ve eğitim amacıyla açık kaynaklı olarak geliştirilmiştir.
+Bu proje **GNU General Public License v3.0 (GPLv3)** kapsamında lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına göz atabilirsiniz.

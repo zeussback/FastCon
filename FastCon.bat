@@ -1,7 +1,23 @@
 @echo off
 cd /d "%~dp0"
+
 if exist ".venv\Scripts\pythonw.exe" (
     start "" ".venv\Scripts\pythonw.exe" -m src.main
-) else (
-    python -m src.main
+    exit /b 0
 )
+
+if exist ".venv\Scripts\python.exe" (
+    start "" ".venv\Scripts\python.exe" -m src.main
+    exit /b 0
+)
+
+where python >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [HATA] Python yuklu veya PATH ortam degiskenine ekli degil.
+    echo Lutfen https://www.python.org adresinden Python 3.11+ kurun ve
+    echo kurulum sirasinda "Add python.exe to PATH" kutucugunu isaretleyin.
+    pause
+    exit /b 1
+)
+
+python -m src.main

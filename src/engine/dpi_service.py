@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import logging
 import socket
 import subprocess
 import threading
@@ -15,6 +16,7 @@ import dns.message
 import dns.rdatatype
 import pydivert
 
+from src.app_logging import RateLimitedLog
 from src.config import AppSettings
 from src.engine.doh_resolver import DoHResolver, extract_dns_question
 from src.engine.packet_parser import (
@@ -25,6 +27,9 @@ from src.engine.packet_parser import (
     extract_tls_sni,
 )
 from src.engine.tls_proxy import BTK_SINKHOLE_PREFIX, TLSRecordProxy
+
+logger = logging.getLogger(__name__)
+_throttled = RateLimitedLog(logger)
 
 PacketSender = Callable[[pydivert.Packet], None]
 
@@ -76,7 +81,7 @@ def _flush_windows_dns_cache() -> None:
             creationflags=flags,
         )
     except (OSError, subprocess.SubprocessError):
-        pass
+        logger.warning("Windows DNS önbelleği temizlenemedi", exc_info=True)
 
 
 @dataclass
@@ -148,6 +153,18 @@ class DPIService:
         """Update active profile, target domain list, and DoH endpoints on the fly."""
         self.settings = settings
         self._doh.endpoints = list(settings.doh_endpoints)
+        logger.info(
+            "Ayarlar güncellendi: profil=%s kapsam=%s alan_adı=%d doh=%s",
+            settings.profile_id,
+            settings.scope_mode.value,
+            len(settings.target_domains),
+            ",".join(settings.doh_endpoints),
+        )
+
+    def clear_dns_cache(self) -> None:
+        """Drop all locally cached DoH answers (Windows cache is flushed separately)."""
+        self._doh.clear_cache()
+        logger.info("DoH önbelleği temizlendi")
 
     def start(self) -> tuple[bool, str]:
         """Start local TLS Record Proxy, open WinDivert handle, and flush poisoned DNS cache."""
@@ -165,10 +182,12 @@ class DPIService:
         except PermissionError:
             self._tls_proxy.stop()
             self._last_error = "Yönetici (Administrator) izni gerekli."
+            logger.warning("Motor başlatılamadı: yönetici izni yok")
             return False, self._last_error
         except OSError as exc:
             self._tls_proxy.stop()
             self._last_error = f"WinDivert sürücüsü başlatılamadı: {exc}"
+            logger.exception("WinDivert sürücüsü açılamadı")
             return False, self._last_error
 
         self._handle = handle
@@ -190,7 +209,17 @@ class DPIService:
             daemon=True,
         ).start()
 
-        return True, "FastCon aktif — 0 ms oyun/ses gecikmesiyle koruma çalışıyor."
+        logger.info(
+            "Motor başlatıldı: profil=%s kapsam=%s proxy_port=%d global_ipv6=%s",
+            self.settings.profile_id,
+            self.settings.scope_mode.value,
+            proxy_port,
+            self._has_global_ipv6,
+        )
+        return (
+            True,
+            "FastCon aktif — oyun ve ses trafiğine dokunulmadan koruma çalışıyor.",
+        )
 
     def _bootstrap_dns_and_doh(self) -> None:
         """Flush stale OS DNS entries and pre-warm HTTP/2 DoH cache for instant first launch."""
@@ -205,11 +234,15 @@ class DPIService:
                 ans = self._doh.resolve_wire(q_wire)
                 if ans is not None:
                     self._extract_and_track_ipv4_answers(ans)
+                else:
+                    logger.warning("DoH ön ısıtma yanıtsız kaldı: %s", domain)
             except (dns.exception.DNSException, ValueError, OSError):
+                logger.warning("DoH ön ısıtma başarısız: %s", domain, exc_info=True)
                 continue
 
     def stop(self) -> None:
         """Cleanly release WinDivert handle and local proxy so networking returns immediately to normal."""
+        was_running = self._running.is_set()
         self._running.clear()
         handle = self._handle
         self._handle = None
@@ -217,7 +250,7 @@ class DPIService:
             try:
                 handle.close()
             except OSError:
-                pass
+                logger.debug("WinDivert tutamacı kapatılırken hata", exc_info=True)
 
         self._tls_proxy.stop()
 
@@ -235,6 +268,9 @@ class DPIService:
         if pool is not None:
             pool.shutdown(wait=False, cancel_futures=True)
 
+        if was_running:
+            logger.info("Motor durduruldu, ağ ayarları normale döndü")
+
     def _safe_send(self, packet: pydivert.Packet) -> None:
         """Inject a packet through the active WinDivert handle in a thread-safe manner."""
         with self._send_lock:
@@ -242,8 +278,13 @@ class DPIService:
             if handle is not None and self._running.is_set():
                 try:
                     handle.send(packet)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    _throttled.log(
+                        logging.WARNING,
+                        f"send:{getattr(exc, 'winerror', None) or exc.errno}",
+                        "Paket ağa geri gönderilemedi: %s",
+                        exc,
+                    )
 
     def _capture_loop(self) -> None:
         """Main packet capture loop executing on a background daemon thread."""
@@ -254,6 +295,11 @@ class DPIService:
             try:
                 packet = handle.recv()
             except OSError:
+                if self._running.is_set():
+                    # Not caused by stop(): the driver/handle died while UI shows "active"
+                    self._last_error = "Paket yakalama beklenmedik şekilde durdu."
+                    logger.exception("WinDivert paket alımı beklenmedik şekilde durdu")
+                    self._running.clear()
                 break
             if packet is None:
                 continue
@@ -347,7 +393,13 @@ class DPIService:
                     return
 
             send_fn(packet)
-        except (OSError, ValueError, IndexError, KeyError, RuntimeError):
+        except (OSError, ValueError, IndexError, KeyError, RuntimeError) as exc:
+            _throttled.log(
+                logging.WARNING,
+                f"packet:{type(exc).__name__}",
+                "Paket işlenirken hata, paket değiştirilmeden iletildi",
+                exc_info=True,
+            )
             send_fn(packet)
 
     def _handle_tls_packet_direct(
@@ -475,4 +527,4 @@ class DPIService:
                         if not ip_text.startswith(BTK_SINKHOLE_PREFIX):
                             self.register_target_ip(ip_text)
         except (dns.exception.DNSException, ValueError):
-            pass
+            logger.debug("DoH yanıtındaki A kayıtları ayrıştırılamadı", exc_info=True)

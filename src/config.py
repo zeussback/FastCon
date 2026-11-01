@@ -45,6 +45,10 @@ DOH_PROVIDER_PRESETS: dict[str, tuple[str, ...]] = {
         "https://8.8.8.8/dns-query",
         "https://8.8.4.4/dns-query",
     ),
+    "Quad9 DoH (9.9.9.9)": (
+        "https://9.9.9.9/dns-query",
+        "https://149.112.112.112/dns-query",
+    ),
 }
 
 

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import math
+import os
+import subprocess
 import threading
 import tkinter as tk
 from collections.abc import Callable
+from pathlib import Path
 
 import customtkinter as ctk
 
+from src import __version__
+from src.app_logging import get_log_dir, read_log_tail
 from src.autostart import AutoStartManager
 from src.config import (
     DEFAULT_TARGET_DOMAINS,
@@ -19,6 +24,7 @@ from src.config import (
     normalize_domain,
 )
 from src.diagnostics.health_check import HealthChecker, ServiceHealth
+from src.diagnostics.report import build_diagnostic_report
 from src.engine.dpi_service import DPIService, _flush_windows_dns_cache
 from src.ui.tray_icon import TrayController
 
@@ -323,6 +329,7 @@ class FastConApp(ctk.CTk):
         is_admin: bool,
         on_request_elevate: Callable[[], None] | None = None,
         start_minimized: bool = False,
+        log_file: Path | None = None,
     ) -> None:
         ctk.set_appearance_mode("dark")
         super().__init__()
@@ -333,6 +340,9 @@ class FastConApp(ctk.CTk):
         self.health_checker = health_checker
         self.is_admin = is_admin
         self._on_request_elevate = on_request_elevate
+        self._log_file = log_file
+        self._last_health_results: list[ServiceHealth] = []
+        self._tray_warned_once = False
 
         self._probe_in_flight = False
         self._spinner_idx = 0
@@ -630,7 +640,12 @@ class FastConApp(ctk.CTk):
         self._profile_desc_lbl.pack(anchor="w", padx=18, pady=(0, 14))
 
     def _build_settings_tab(self) -> None:
-        self._settings_frame = ctk.CTkFrame(self._content_area, fg_color="transparent")
+        self._settings_frame = ctk.CTkScrollableFrame(
+            self._content_area,
+            fg_color="transparent",
+            scrollbar_button_color=BG_ELEVATED,
+            scrollbar_button_hover_color=BORDER_FOCUS,
+        )
 
         # 1. Scope & Target Domains Card
         scope_card = ctk.CTkFrame(
@@ -821,6 +836,75 @@ class FastConApp(ctk.CTk):
         )
         self._settings_status_lbl.pack(anchor="w", padx=18, pady=(0, 14))
 
+        # 4. Diagnostics & Support Card
+        diag_card = ctk.CTkFrame(
+            self._settings_frame,
+            fg_color=BG_SURFACE,
+            corner_radius=16,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+        )
+        diag_card.pack(fill="x", pady=8)
+
+        ctk.CTkLabel(
+            diag_card,
+            text=f"Tanılama ve Destek (v{__version__})",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=TEXT_WHITE,
+        ).pack(anchor="w", padx=18, pady=(16, 6))
+
+        ctk.CTkLabel(
+            diag_card,
+            text="Erişim sorunu yaşarsanız tanı raporunu kopyalayıp GitHub Issue veya destek bildirimine ekleyebilirsiniz.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=TEXT_SECONDARY,
+            wraplength=410,
+            justify="left",
+        ).pack(anchor="w", padx=18, pady=(0, 12))
+
+        diag_btns = ctk.CTkFrame(diag_card, fg_color="transparent")
+        diag_btns.pack(fill="x", padx=18, pady=(0, 8))
+
+        self._copy_report_btn = ctk.CTkButton(
+            diag_btns,
+            text="Tanı Raporunu Kopyala",
+            width=175,
+            height=30,
+            corner_radius=7,
+            fg_color=BG_ELEVATED,
+            hover_color=BG_HOVER,
+            border_color=BORDER_SUBTLE,
+            border_width=1,
+            text_color=TEXT_WHITE,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self._on_copy_diagnostic_report,
+        )
+        self._copy_report_btn.pack(side="left", padx=(0, 8))
+
+        self._open_log_btn = ctk.CTkButton(
+            diag_btns,
+            text="Log Klasörünü Aç",
+            width=135,
+            height=30,
+            corner_radius=7,
+            fg_color=BG_ELEVATED,
+            hover_color=BG_HOVER,
+            border_color=BORDER_SUBTLE,
+            border_width=1,
+            text_color=TEXT_SECONDARY,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=self._on_open_log_folder,
+        )
+        self._open_log_btn.pack(side="left")
+
+        self._diag_feedback_lbl = ctk.CTkLabel(
+            diag_card,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=STATUS_ONLINE,
+        )
+        self._diag_feedback_lbl.pack(anchor="w", padx=18, pady=(0, 12))
+
     def switch_tab(self, tab_name: str) -> None:
         """Switch between 'home' (Ana Ekran) and 'settings' (Ayarlar) views."""
         self._current_tab = tab_name
@@ -919,6 +1003,7 @@ class FastConApp(ctk.CTk):
 
     def _apply_health_results(self, results: list[ServiceHealth]) -> None:
         self._probe_in_flight = False
+        self._last_health_results = list(results)
         self._test_btn.configure(state="normal", text="Şimdi Test Et")
         for item in results:
             badge = self._service_badges.get(item.service_name)
@@ -971,7 +1056,7 @@ class FastConApp(ctk.CTk):
             self.dpi_service.update_settings(self.settings)
 
     def _on_flush_dns_clicked(self) -> None:
-        self.dpi_service._doh.clear_cache()
+        self.dpi_service.clear_dns_cache()
         threading.Thread(target=_flush_windows_dns_cache, daemon=True).start()
         self._flush_feedback_lbl.configure(
             text="✓ DNS ve DoH önbelleği temizlendi.", text_color=STATUS_ONLINE
@@ -983,6 +1068,42 @@ class FastConApp(ctk.CTk):
                 text_color=TEXT_MUTED,
             ),
         )
+
+    def _on_copy_diagnostic_report(self) -> None:
+        log_lines: list[str] = []
+        if self._log_file is not None and self._log_file.exists():
+            log_lines = read_log_tail(self._log_file, max_lines=40)
+        report = build_diagnostic_report(
+            version=__version__,
+            is_admin=self.is_admin,
+            settings=self.settings,
+            engine_running=self.dpi_service.is_running,
+            stats=self.dpi_service.stats,
+            last_error=self.dpi_service.last_error,
+            health_results=self._last_health_results,
+            log_lines=log_lines,
+        )
+        self.clipboard_clear()
+        self.clipboard_append(report)
+        self._diag_feedback_lbl.configure(
+            text="✓ Tanı raporu panoya kopyalandı!", text_color=STATUS_ONLINE
+        )
+        self.after(
+            3500,
+            lambda: (
+                self._diag_feedback_lbl.configure(text="")
+                if not self._quitting
+                else None
+            ),
+        )
+
+    def _on_open_log_folder(self) -> None:
+        log_dir = get_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(log_dir))  # type: ignore[attr-defined]
+        except (AttributeError, OSError):
+            subprocess.run(["explorer", str(log_dir)], check=False)
 
     def _open_domain_editor(self) -> None:
         DomainEditorDialog(
@@ -1024,6 +1145,13 @@ class FastConApp(ctk.CTk):
     def _handle_window_close(self) -> None:
         """Minimize to tray if configured, otherwise shut down cleanly."""
         if self.settings.minimize_to_tray:
+            if not self._tray_warned_once:
+                self._tray_warned_once = True
+                self.tray.notify(
+                    "FastCon arka planda çalışmaya devam ediyor.\n"
+                    "Simgeye tıklayarak pencereyi açabilir veya sağ tıklayıp Çıkış yapabilirsiniz.",
+                    title="FastCon Sistem Tepsisinde",
+                )
             self.withdraw()
         else:
             self.quit_application()

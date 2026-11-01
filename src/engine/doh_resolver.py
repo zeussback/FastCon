@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Sequence
@@ -11,7 +12,11 @@ import dns.exception
 import dns.message
 import httpx
 
+from src.app_logging import RateLimitedLog
 from src.config import DEFAULT_DOH_ENDPOINTS, normalize_domain
+
+logger = logging.getLogger(__name__)
+_throttled = RateLimitedLog(logger)
 
 CacheKey = tuple[str, int, int]
 _DOH_MIME = "application/dns-message"
@@ -123,9 +128,29 @@ class DoHResolver:
                             expires_at=time.monotonic() + ttl,
                         )
                     return tx_id + body_without_id
-            except httpx.HTTPError:
+                _throttled.log(
+                    logging.WARNING,
+                    f"status:{endpoint}:{response.status_code}",
+                    "DoH sunucusu geçersiz yanıt verdi: %s (HTTP %s)",
+                    endpoint,
+                    response.status_code,
+                )
+            except httpx.HTTPError as exc:
+                _throttled.log(
+                    logging.WARNING,
+                    f"err:{endpoint}:{type(exc).__name__}",
+                    "DoH sunucusuna ulaşılamadı: %s (%s: %s)",
+                    endpoint,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
 
+        _throttled.log(
+            logging.WARNING,
+            "all-failed",
+            "Tüm DoH sunucuları başarısız oldu, sorgu sistem DNS'ine bırakıldı",
+        )
         return None
 
     def clear_cache(self) -> None:
