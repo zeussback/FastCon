@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FastCon</title>
+  <link rel="stylesheet" href="app.css">
+  <!-- Eel runtime script served dynamically by Bottle -->
+  <script type="text/javascript" src="/eel.js"></script>
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="status-indicator" id="headerStatusDot"></span>
+        <h1 class="brand-title">FastCon</h1>
+        <span class="version-tag" id="appVersion">v1.1.0</span>
+      </div>
+      <nav class="tab-nav">
+        <button class="tab-btn active" id="tabBtnHome" onclick="switchTab('home')">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>Ana Ekran</span>
+        </button>
+        <button class="tab-btn" id="tabBtnSettings" onclick="switchTab('settings')">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Ayarlar</span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- Admin Warning Banner (Hidden if Admin) -->
+    <div class="admin-banner" id="adminBanner" style="display: none;">
+      <div class="admin-banner-text">
+        <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>Paket filtreleme için Yönetici izni gerekli.</span>
+      </div>
+      <button class="btn-elevate" onclick="triggerElevate()">Yükselt</button>
+    </div>
+
+    <!-- MAIN TAB CONTENT AREA -->
+    <main class="content-area">
+
+      <!-- ==================== ANA EKRAN (DASHBOARD) ==================== -->
+      <section class="tab-pane active" id="paneHome">
+
+        <!-- 1. HERO POWER CARD -->
+        <div class="card hero-card">
+          <div class="power-orb-wrapper">
+            <!-- Pulsing outer ripples for active state -->
+            <div class="sonar-ring ring-1" id="sonarRing1"></div>
+            <div class="sonar-ring ring-2" id="sonarRing2"></div>
+            <button class="power-button" id="powerBtn" onclick="toggleEngine()" aria-label="Bağlantı Korumasını Başlat veya Durdur">
+              <div class="power-icon-wrapper">
+                <svg class="power-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                  <line x1="12" y1="2" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <span class="power-text" id="powerBtnText">BAŞLAT</span>
+              <span class="power-sub" id="powerBtnSub">HAZIR</span>
+            </button>
+          </div>
+
+          <div class="hero-status-texts">
+            <h2 class="hero-title" id="heroStatusTitle">Bağlantı Koruması Kapalı</h2>
+            <p class="hero-sub" id="heroStatusSub">Başlatmak için butona dokunun — oyun ve ses gecikmesi 0 ms.</p>
+          </div>
+
+          <!-- Real-time Packet & DNS Counters -->
+          <div class="stats-pill" id="statsPill">
+            <span class="stat-item"><span class="stat-label">TLS</span> <b id="statTls">0</b></span>
+            <span class="stat-divider">•</span>
+            <span class="stat-item"><span class="stat-label">DoH DNS</span> <b id="statDns">0</b></span>
+            <span class="stat-divider">•</span>
+            <span class="stat-item"><span class="stat-label">Son</span> <b id="statLastDomain">-</b></span>
+          </div>
+        </div>
+
+        <!-- 2. ACCESS HEALTH STATUS CARD -->
+        <div class="card access-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              <h3 class="card-title">Erişim Durumu</h3>
+            </div>
+            <button class="btn-test" id="btnTestHealth" onclick="runHealthCheck()">
+              <span class="test-spinner" id="testSpinner"></span>
+              <span class="test-label" id="testBtnLabel">Şimdi Test Et</span>
+            </button>
+          </div>
+
+          <div class="service-list">
+            <!-- Discord Row -->
+            <div class="service-row" id="rowDiscord">
+              <div class="service-left">
+                <span class="service-dot" id="dotDiscord"></span>
+                <span class="service-name">Discord</span>
+              </div>
+              <span class="service-badge" id="badgeDiscord">Hazır</span>
+            </div>
+
+            <!-- Roblox Row -->
+            <div class="service-row" id="rowRoblox">
+              <div class="service-left">
+                <span class="service-dot" id="dotRoblox"></span>
+                <span class="service-name">Roblox</span>
+              </div>
+              <span class="service-badge" id="badgeRoblox">Hazır</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. CONNECTION PROFILE SELECTOR CARD -->
+        <div class="card profile-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <h3 class="card-title">Bağlantı Profili</h3>
+            </div>
+          </div>
+          <div class="custom-select-wrapper">
+            <select class="custom-select" id="profileSelect" onchange="onProfileChange(this.value)">
+              <!-- Options populated dynamically by JS -->
+            </select>
+            <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+          <p class="profile-desc" id="profileDescription">ISS filtrelerini atlatmak için optimize edilmiş profil.</p>
+        </div>
+
+      </section>
+
+      <!-- ==================== AYARLAR (SETTINGS) ==================== -->
+      <section class="tab-pane" id="paneSettings">
+
+        <!-- 1. Scope & Target Domains -->
+        <div class="card settings-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <h3 class="card-title">Etki Kapsamı ve Alan Adları</h3>
+            </div>
+          </div>
+          <p class="card-sub">Korumayı yalnızca listedeki uygulamalara veya tüm web trafiğine uygulayın.</p>
+
+          <div class="segmented-control" id="scopeSegmented">
+            <button class="seg-btn active" data-scope="selected_only" onclick="onScopeChange('selected_only')">Sadece Seçili Uygulamalar</button>
+            <button class="seg-btn" data-scope="all_sites" onclick="onScopeChange('all_sites')">Tüm Siteler</button>
+          </div>
+
+          <div class="domain-manager-row">
+            <span class="domain-count-badge" id="domainCountText">14 alan adı aktif</span>
+            <button class="btn-secondary" onclick="openDomainModal()">Listeyi Düzenle</button>
+          </div>
+        </div>
+
+        <!-- 2. Encrypted DNS (DoH) -->
+        <div class="card settings-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              <h3 class="card-title">Şifreli DNS (DoH) Sağlayıcısı</h3>
+            </div>
+          </div>
+          <p class="card-sub">DNS sorgularının ISS tarafından izlenmesini önleyen güvenli DoH sunucusu.</p>
+
+          <div class="custom-select-wrapper">
+            <select class="custom-select" id="dohSelect" onchange="onDohChange(this.value)">
+              <!-- Populated dynamically -->
+            </select>
+            <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+
+          <div class="dns-flush-row">
+            <span class="flush-hint">Windows ve yerel DNS önbelleğini sıfırlar.</span>
+            <button class="btn-secondary" id="btnFlushDns" onclick="flushDns()">DNS Temizle</button>
+          </div>
+        </div>
+
+        <!-- 3. System & Startup -->
+        <div class="card settings-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+              <h3 class="card-title">Sistem ve Başlangıç</h3>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title">Tepsiye Küçült</span>
+              <span class="toggle-desc">Pencere kapatıldığında arka planda tepside (Tray) çalışmaya devam etsin.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switchMinimizeTray" onchange="onTrayPrefToggle(this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title">Windows ile Başlat</span>
+              <span class="toggle-desc">Bilgisayar açıldığında otomatik olarak başlasın ve tepsiden koruma sağlasın.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switchAutostart" onchange="onAutostartToggle(this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="system-status-indicator" id="sysAdminStatus">
+            <span class="indicator-dot" id="sysAdminDot"></span>
+            <span class="indicator-text" id="sysAdminText">Yetki: Kontrol ediliyor...</span>
+          </div>
+        </div>
+
+        <!-- 4. Diagnostics & Support -->
+        <div class="card settings-card">
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <h3 class="card-title">Tanılama ve Destek</h3>
+            </div>
+          </div>
+          <p class="card-sub">Erişim sorunu yaşarsanız tanı raporunu tek tıkla kopyalayıp GitHub veya destek bildirimine ekleyebilirsiniz.</p>
+
+          <div class="diag-actions-row">
+            <button class="btn-primary-ghost" id="btnCopyReport" onclick="copyDiagnosticReport()">
+              <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Tanı Raporunu Kopyala</span>
+            </button>
+            <button class="btn-secondary" onclick="openLogFolder()">
+              <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              <span>Log Klasörü</span>
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- DOMAIN EDITOR MODAL -->
+    <div class="modal-backdrop" id="domainModalBackdrop">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Hedef Alan Adlarını Düzenle</h3>
+          <button class="modal-close-btn" onclick="closeDomainModal()">&times;</button>
+        </div>
+        <p class="modal-desc">Her satıra bir alan adı yazın (örn: <code>discord.com</code>). Alt alan adları otomatik olarak kapsanır.</p>
+        <textarea class="modal-textarea" id="domainsTextarea" rows="10" placeholder="discord.com&#10;roblox.com"></textarea>
+        <div class="modal-footer">
+          <button class="btn-text-danger" onclick="resetDomainDefaults()">Varsayılana Sıfırla</button>
+          <div class="modal-footer-actions">
+            <button class="btn-secondary" onclick="closeDomainModal()">İptal</button>
+            <button class="btn-primary" onclick="saveDomains()">Kaydet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div class="toast-container" id="toastContainer"></div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

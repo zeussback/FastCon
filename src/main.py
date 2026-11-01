@@ -111,8 +111,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 show_already_running_message()
             return 0
 
-    # Lazy import GUI module after UAC check so elevation relaunch is instantaneous
-    from src.ui.app_window import FastConApp
+    # Lazy import modern Web GUI module after UAC check so elevation relaunch is instantaneous
+    from src.ui.web_window import launch_web_app
 
     settings = AppSettings.load()
     dpi_service = DPIService(settings=settings)
@@ -122,24 +122,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     def handle_manual_elevate() -> None:
         instance_lock.release()
         if relaunch_as_admin():
-            app.quit_application()
-            return
+            sys.exit(0)
         instance_lock.acquire()
-        instance_lock.start_listener(lambda: app.after(0, app.show_window))
 
-    app = FastConApp(
-        settings=settings,
-        dpi_service=dpi_service,
-        autostart_manager=autostart_manager,
-        health_checker=health_checker,
-        is_admin=admin,
-        on_request_elevate=handle_manual_elevate,
-        start_minimized=args.minimized,
-        log_file=log_file,
-    )
-    instance_lock.start_listener(lambda: app.after(0, app.show_window))
     try:
-        app.mainloop()
+        return launch_web_app(
+            settings=settings,
+            dpi_service=dpi_service,
+            autostart_manager=autostart_manager,
+            health_checker=health_checker,
+            is_admin=admin,
+            on_request_elevate=handle_manual_elevate,
+            start_minimized=args.minimized,
+            log_file=log_file,
+            instance_lock=instance_lock,
+        )
     finally:
         instance_lock.release()
         logger.info("FastCon kapatıldı")

@@ -62,7 +62,7 @@ echo.
 
 :: 3. Bagimliliklari Yukleme
 echo [2/3] Gerekli kutuphaneler yukleniyor...
-echo       (customtkinter, pydivert, pystray, httpx, dnspython)
+echo       (eel, bottle, gevent, pydivert, pystray, httpx, dnspython)
 echo       Bu islem internet hizina bagli olarak 30-60 saniye surebilir...
 echo.
 

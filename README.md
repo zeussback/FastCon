@@ -22,9 +22,9 @@
 - **🚀 Doğrudan İSS Pingi (Surgical Handshake Manipulation):** UDP ses (Discord WebRTC) ve oyun sunucusu paketlerine dokunulmaz. Sadece engelleme uygulanan ilk TLS/HTTP el sıkışma paketleri filtrelenir.
 - **🛡️ Çok Katmanlı DPI Aşma Motoru:** Giden TLS el sıkışma paketlerini RFC 5246 TLS Record katmanında ve TCP segment düzeyinde SNI uzantısı sınırından böler (`Standart Mod`, `Derin Paket Aşma`, `Hafif Mod`).
 - **🔒 Yerel DNS-over-HTTPS (DoH) Çözümleyici:** Ağ bağdaştırıcısı ayarlarını bozmadan, DNS sorgularını şifreli HTTPS (*Cloudflare*, *Google*, *Quad9*) üzerinden çözer ve yerel TTL önbelleğine alır.
-- **🖥️ Modern Monokrom Arayüz & İki Sekmeli Tasarım:**
-  - **Ana Ekran:** Canlı animasyonlu **BAŞLAT / DURDUR** güç butonu, Discord ve Roblox için gerçek zamanlı 1-RTT ping ve erişim testi (**Şimdi Test Et**), **Bağlantı Profili** seçimi.
-  - **Ayarlar Sekmesi:** Kapsam seçimi (*Sadece Seçili Uygulamalar* / *Tüm Siteler*), hedef alan adı listesi düzenleyici, şifreli DoH sağlayıcı seçimi, tek tıkla DNS önbelleği temizleme, sistem tepsisi (System Tray) ve Windows başlangıçta otomatik çalışma tercihleri.
+- **🖥️ Donanım Hızlandırmalı Modern Web Arayüzü & İki Sekmeli Tasarım:**
+  - **Ana Ekran:** Microsoft Edge App Modu üzerinden 60/120 FPS akıcı CSS animasyonları, sonar dalgalı **BAŞLAT / DURDUR** güç orbu, anlık paket istatistikleri (`TLS`, `DoH DNS`, `Son Alan Adı`), Discord ve Roblox için gerçek zamanlı 1-RTT ping ve erişim testi (**Şimdi Test Et**), **Bağlantı Profili** seçimi.
+  - **Ayarlar Sekmesi:** Kapsam seçimi (*Sadece Seçili Uygulamalar* / *Tüm Siteler*), hedef alan adı listesi modal düzenleyicisi, şifreli DoH sağlayıcı seçimi, tek tıkla DNS önbelleği temizleme, sistem tepsisi (System Tray) ve Windows başlangıçta otomatik çalışma tercihleri.
   - **Tanılama & Destek:** Sorun anında tek tıkla panoya kopyalanabilir **Tanı Raporu** ve dönen log dosyası (`fastcon.log`).
 - **🛡️ Çift Örnek Kilidi (Single-Instance Mutex):** Uygulamanın yanlışlıkla iki kez açılarak ağ sürücüsünü çakıştırmasını engeller; ikinci açılışta mevcut pencereyi otomatik öne getirir.
 
@@ -51,9 +51,11 @@ FastCon/
 │   │   ├── health_check.py     # Discord (Web+Ses) ve Roblox (Web+Oyun) canlı 1-RTT testi
 │   │   └── report.py           # Destek için sistem tanı raporu oluşturucu
 │   └── ui/
-│       ├── app_window.py       # Monokrom CustomTkinter arayüzü ve animasyonlu kontroller
+│       ├── web_window.py       # Modern Eel & Microsoft Edge App Mode kontrolcüsü
+│       ├── web/                # Donanım hızlandırmalı modern web varlıkları (HTML5/CSS3/JS)
+│       ├── app_window.py       # Alternatif CustomTkinter yedek arayüzü
 │       └── tray_icon.py        # Sistem tepsisi (System Tray) yöneticisi
-├── tests/                      # 41 adet Pytest birim ve entegrasyon testi
+├── tests/                      # 47 adet Pytest birim ve entegrasyon testi
 ├── setup.bat                   # Tek tıkla otomatik sanal ortam ve masaüstü kısayolu kurucu
 ├── FastCon.bat                 # Tek tıkla arka planda konsolsuz başlatıcı
 ├── requirements.txt            # Çalışma zamanı bağımlılıkları
