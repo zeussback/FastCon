@@ -34,6 +34,8 @@
 
 ```text
 FastCon/
+├── assets/
+│   └── icon.ico                # Uygulama ve masaüstü kısayol simgesi
 ├── src/
 │   ├── main.py                 # Uygulama giriş noktası, UAC yükseltme ve tek örnek kilidi
 │   ├── app_logging.py          # Dönen UTF-8 loglayıcı ve oran sınırlayıcı
@@ -46,14 +48,16 @@ FastCon/
 │   │   ├── doh_resolver.py     # Yerel önbellekli DNS-over-HTTPS (DoH) çözümleyici
 │   │   └── dpi_service.py      # WinDivert tabanlı arka plan paket yakalama servisi
 │   ├── diagnostics/
-│   │   ├── health_check.py     # Discord ve Roblox canlı 1-RTT bağlantı testi
+│   │   ├── health_check.py     # Discord (Web+Ses) ve Roblox (Web+Oyun) canlı 1-RTT testi
 │   │   └── report.py           # Destek için sistem tanı raporu oluşturucu
 │   └── ui/
 │       ├── app_window.py       # Monokrom CustomTkinter arayüzü ve animasyonlu kontroller
 │       └── tray_icon.py        # Sistem tepsisi (System Tray) yöneticisi
-├── tests/                      # 39 adet Pytest birim ve entegrasyon testi
+├── tests/                      # 41 adet Pytest birim ve entegrasyon testi
+├── setup.bat                   # Tek tıkla otomatik sanal ortam ve masaüstü kısayolu kurucu
 ├── FastCon.bat                 # Tek tıkla arka planda konsolsuz başlatıcı
-└── requirements.txt            # Python bağımlılıkları
+├── requirements.txt            # Çalışma zamanı bağımlılıkları
+└── requirements-dev.txt        # Test ve geliştirme bağımlılıkları
 ```
 
 ---
@@ -62,31 +66,34 @@ FastCon/
 
 ### Gereksinimler
 - **İşletim Sistemi:** Windows 10 / Windows 11 (64-bit)
-- **Python:** Python 3.11 veya üzeri ([python.org](https://www.python.org/downloads/) üzerinden indirirken *"Add python.exe to PATH"* kutucuğunu işaretleyin).
+- **Python:** Python 3.11 veya üzeri ([python.org](https://www.python.org/downloads/) üzerinden kurarken *"Add python.exe to PATH"* kutucuğunu işaretleyin).
 - **Yetki:** Ağ paketlerini el sıkışma katmanında inceleyebilmek için **Yönetici (Administrator)** izni gereklidir (uygulama otomatik olarak UAC onayı ister).
 
-### Adım Adım Kurulum
+---
 
-1. **Projeyi indirin:**
-   - Git ile:
-     ```powershell
-     git clone https://github.com/zeussback/FastCon.git
-     cd FastCon
-     ```
-   - *Veya* GitHub sayfasından yeşil **Code → Download ZIP** seçeneğiyle indirip bir klasöre çıkartın.
+### Yöntem 1: Tek Tıkla Kolay Kurulum (Önerilen)
 
-2. **Sanal ortam oluşturun ve bağımlılıkları yükleyin:**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-   ```
+1. Projeyi indirin:
+   - GitHub sayfasından yeşil **Code → Download ZIP** seçeneğiyle indirip klasöre çıkartın, **veya**
+   - Terminalde: `git clone https://github.com/zeussback/FastCon.git`
+2. Klasördeki **`setup.bat`** dosyasına çift tıklayın.  
+   *(Sanal ortamı otomatik kurar, kütüphaneleri yükler ve masaüstünüze logolu **FastCon** kısayolu ekler).*
+3. Kurulum bitince masaüstündeki **FastCon** simgesine çift tıklayarak kullanmaya başlayabilirsiniz!
 
-3. **Uygulamayı başlatın:**
-   - Klasördeki **`FastCon.bat`** dosyasına çift tıklayarak (arka planda siyah konsol penceresi açılmadan doğrudan arayüzü başlatır), **veya**
-   - Terminal üzerinden:
-     ```powershell
-     .\.venv\Scripts\python.exe -m src.main
-     ```
+---
+
+### Yöntem 2: Manuel Kurulum (Geliştiriciler İçin)
+
+```powershell
+# 1. Sanal ortamı oluşturun
+python -m venv .venv
+
+# 2. Bağımlılıkları yükleyin
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+
+# 3. Uygulamayı başlatın
+.\.venv\Scripts\python.exe -m src.main
+```
 
 ---
 

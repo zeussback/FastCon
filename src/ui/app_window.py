@@ -354,6 +354,15 @@ class FastConApp(ctk.CTk):
         self.minsize(480, 610)
         self.configure(fg_color=BG_CANVAS)
 
+        icon_path = (
+            Path(__file__).resolve().parent.parent.parent / "assets" / "icon.ico"
+        )
+        if icon_path.exists():
+            try:
+                self.iconbitmap(str(icon_path))
+            except (tk.TclError, OSError):
+                pass
+
         self._profile_names_to_id = {
             prof.display_name: pid for pid, prof in ISP_PROFILES.items()
         }

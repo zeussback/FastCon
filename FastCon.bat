@@ -11,6 +11,14 @@ if exist ".venv\Scripts\python.exe" (
     exit /b 0
 )
 
+if exist "setup.bat" (
+    echo [BILGI] FastCon ortami (.venv) henuz hazirlanmamis.
+    echo Kurulum Sihirbazi (setup.bat) baslatiliyor...
+    echo.
+    call setup.bat
+    exit /b 0
+)
+
 where python >nul 2>nul
 if %errorlevel% neq 0 (
     echo [HATA] Python yuklu veya PATH ortam degiskenine ekli degil.
