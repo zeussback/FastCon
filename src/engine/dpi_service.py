@@ -226,7 +226,12 @@ class DPIService:
         _flush_windows_dns_cache()
         if not self.settings.active_profile.enable_doh:
             return
-        for domain in ("discord.com", "gateway.discord.gg", "www.roblox.com"):
+        for domain in (
+            "discord.com",
+            "gateway.discord.gg",
+            "www.roblox.com",
+            "apis.roblox.com",
+        ):
             if not self._running.is_set():
                 break
             try:

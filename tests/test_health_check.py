@@ -132,7 +132,7 @@ def test_health_checker_reports_discord_and_roblox_statuses() -> None:
     """HealthChecker distinguishes reachable services from timed-out/blocked services."""
 
     def probe_transport(request: httpx.Request) -> httpx.Response:
-        if "discord.com" in str(request.url):
+        if "discord" in str(request.url):
             return httpx.Response(200)
         raise httpx.ConnectTimeout("ISP DPI timeout")
 
@@ -143,8 +143,49 @@ def test_health_checker_reports_discord_and_roblox_statuses() -> None:
     by_name = {item.service_name: item for item in results}
     assert by_name["Discord"].reachable is True
     assert by_name["Discord"].latency_ms is not None
+    assert "Web + Ses" in by_name["Discord"].detail
+    assert len(by_name["Discord"].endpoints) == 2
+
     assert by_name["Roblox"].reachable is False
     assert "Engel" in by_name["Roblox"].detail or "Zaman" in by_name["Roblox"].detail
+    assert len(by_name["Roblox"].endpoints) == 2
+
+
+def test_health_checker_composite_partial_failures() -> None:
+    """HealthChecker detects partial ISP blocks (e.g. web accessible but voice gateway blocked)."""
+
+    def mock_transport(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        # Discord: web is open, but gateway is blocked
+        if "discord.com" in url_str:
+            return httpx.Response(200)
+        if "gateway.discord.gg" in url_str:
+            raise httpx.ConnectTimeout("DPI timeout on gateway")
+        # Roblox: web is open, but API is blocked
+        if (
+            "roblox.com/cdn" in url_str
+            or url_str.rstrip("/") == "https://www.roblox.com"
+        ):
+            return httpx.Response(200)
+        if "apis.roblox.com" in url_str:
+            raise httpx.ConnectError("Connection reset by peer")
+        return httpx.Response(200)
+
+    client = httpx.Client(transport=httpx.MockTransport(mock_transport))
+    checker = HealthChecker(http_client=client)
+    results = {item.service_name: item for item in checker.check_all()}
+
+    # Discord partial failure
+    discord = results["Discord"]
+    assert discord.reachable is False
+    assert discord.is_partial is True
+    assert "Ses/Gateway Engelli" in discord.detail
+
+    # Roblox partial failure
+    roblox = results["Roblox"]
+    assert roblox.reachable is False
+    assert roblox.is_partial is True
+    assert "Oyun API Engelli" in roblox.detail
 
 
 def test_health_checker_classifies_dns_reset_and_5xx_responses() -> None:

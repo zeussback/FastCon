@@ -64,8 +64,16 @@ def build_diagnostic_report(
 
     if health_results:
         for item in health_results:
-            state = "ERİŞİLEBİLİR" if item.reachable else "ERİŞİLEMİYOR"
+            if getattr(item, "is_partial", False):
+                state = "KISMİ ENGEL"
+            elif item.reachable:
+                state = "ERİŞİLEBİLİR"
+            else:
+                state = "ERİŞİLEMİYOR"
             lines.append(f"{item.service_name}: {state} ({item.detail})")
+            for ep in getattr(item, "endpoints", ()):
+                ep_state = "✓" if ep.reachable else "✗"
+                lines.append(f"  [{ep_state}] {ep.name}: {ep.detail} ({ep.url})")
     else:
         lines.append("Henüz test yapılmadı")
 

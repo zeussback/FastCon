@@ -1013,6 +1013,9 @@ class FastConApp(ctk.CTk):
             if item.reachable:
                 dot.configure(text_color=STATUS_ONLINE)
                 badge.configure(text=item.detail, text_color=TEXT_WHITE)
+            elif getattr(item, "is_partial", False):
+                dot.configure(text_color=STATUS_WARNING)
+                badge.configure(text=item.detail, text_color=STATUS_WARNING)
             else:
                 dot.configure(text_color=STATUS_OFFLINE)
                 badge.configure(text=item.detail, text_color=STATUS_OFFLINE)

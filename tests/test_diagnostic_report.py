@@ -42,6 +42,51 @@ def test_report_contains_environment_settings_health_and_log_tail() -> None:
     assert "motor başladı" in report
 
 
+def test_report_includes_endpoint_breakdown_and_partial_blocks() -> None:
+    """Report displays individual sub-endpoints and marks partial blocks."""
+    from src.diagnostics.health_check import EndpointHealth
+
+    health = [
+        ServiceHealth(
+            service_name="Discord",
+            url="https://discord.com",
+            reachable=False,
+            latency_ms=53,
+            detail="Kısmi: Web Açık, Ses/Gateway Engelli",
+            endpoints=(
+                EndpointHealth(
+                    "Web & API",
+                    "https://discord.com/cdn-cgi/trace",
+                    True,
+                    53,
+                    "Erişilebilir (53 ms)",
+                ),
+                EndpointHealth(
+                    "Ses & Gateway",
+                    "https://gateway.discord.gg/",
+                    False,
+                    None,
+                    "DPI Engeli / Zaman Aşımı",
+                ),
+            ),
+            is_partial=True,
+        )
+    ]
+    report = build_diagnostic_report(
+        version="0.2.0",
+        is_admin=True,
+        settings=AppSettings(),
+        engine_running=True,
+        stats=EngineStats(),
+        last_error=None,
+        health_results=health,
+        log_lines=[],
+    )
+    assert "Discord: KISMİ ENGEL (Kısmi: Web Açık, Ses/Gateway Engelli)" in report
+    assert "[✓] Web & API: Erişilebilir (53 ms)" in report
+    assert "[✗] Ses & Gateway: DPI Engeli / Zaman Aşımı" in report
+
+
 def test_report_handles_missing_health_and_logs() -> None:
     """Report is still well-formed before the first health check or log write."""
     report = build_diagnostic_report(
